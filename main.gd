@@ -2334,8 +2334,8 @@ func _maybe_start_emerge() -> void:
 	player.facing = 1
 	player.velocity = Vector2.ZERO
 	player.z_index = -10
-	cam_x = 0.0
-	camera.position = Vector2(VIEW_W / 2.0, VIEW_H / 2.0)
+	cam_x = clampf(cx - VIEW_W / 2.0, 0.0, float(LW * TILE - VIEW_W))   # centre on the pipe Mario emerges from (Level 14 is mid-level)
+	camera.position = Vector2(roundf(cam_x) + VIEW_W / 2.0, VIEW_H / 2.0)
 	fade_alpha = 0.0
 	sfx("powerdown")
 
@@ -2789,6 +2789,7 @@ func _update_l14_cut(delta: float) -> void:
 		fg_renderer.queue_redraw()
 		return
 	sonic_state_t += delta
+	sonic_frame_t += delta          # drive the spin/ball/jump frame cycling (_sonic_compute_frame)
 	# Mario holds on the brick, facing left — but ONCE DEAD, stop animating so his death pose
 	# (and death-jump, driven below) isn't overwritten each frame
 	if not player.dead:
@@ -2820,7 +2821,7 @@ func _update_l14_cut(delta: float) -> void:
 					_l14_prejump_t = 0.0
 		1:
 			# landed — jump straight up and BUMP the ? block above (if one's placed), then land
-			sonic_state = "jump"; sonic_face = "r"
+			sonic_state = "ball"; sonic_face = "r"      # spin as a ball while jumping at the block
 			var u: float = clampf(sonic_state_t / SONIC_CUT_JUMP_T, 0.0, 1.0)
 			sonic_jump_off = -_l14_jump_h * sin(PI * u)
 			if not _l14_bumped and u >= 0.5 and _l14_qblock.x >= 0:
@@ -3024,12 +3025,28 @@ func _update_sonic_cut(delta: float) -> void:
 			player.facing = 1 if sonic_state_t >= SONIC_CUT_SEGA_T else -1   # change stance to face Sonic
 			player._animate()
 			if sonic_state_t >= SONIC_CUT_SEGA_T and not sega_player.playing:
-				# arm Sonic's crash
-				sonic_cut_phase = 4
+				# spin-dash windup at his crash start, THEN the dash (phase 4)
+				sonic_cut_phase = 12
 				sonic_x = float((pc.x + 19) * TILE + 8)
 				_sonic_break_col = int(sonic_x / TILE) + 1
-				sonic_face = "l"; sonic_state = "ball"
+				sonic_face = "l"; sonic_state = "duck"
 				sonic_state_t = 0.0; sonic_frame_t = 0.0; sonic_jump_off = 0.0
+				_sonic_spin_snd = false
+		12:
+			# spin-dash windup: crouch, then rev in place, THEN crash through the wall (phase 4)
+			sonic_state_t += delta; sonic_frame_t += delta
+			sonic_face = "l"
+			if sonic_state_t < SPIN_DUCK_TIME:
+				sonic_state = "duck"
+			elif sonic_state_t < SPIN_DUCK_TIME + SPIN_CHARGE_TIME:
+				sonic_state = "spin"
+				if not _sonic_spin_snd:
+					_sonic_spin_snd = true; sfx("sonic_spin")
+			else:
+				sonic_cut_phase = 4
+				sonic_state = "ball"
+				sonic_state_t = 0.0; sonic_frame_t = 0.0
+			_sonic_compute_frame()
 		4:
 			# Sonic crashes out — spin-dash in from the right, tunnelling the wall bricks
 			sonic_state_t += delta; sonic_frame_t += delta
