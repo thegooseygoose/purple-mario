@@ -2241,7 +2241,7 @@ func _begin_underground() -> void:
 
 
 func _check_pipe_exit() -> void:
-	if pipe_exit or _level_file != 4 or pipeover_cells.is_empty():
+	if pipe_exit or not PIPE_EXIT_MAP.has(_level_file) or pipeover_cells.is_empty():
 		return
 	if not player.grounded or player.facing != 1:
 		return
@@ -2301,7 +2301,7 @@ func _warp_from_pipe() -> void:
 	player.z_index = 0
 	saved_tier = player.tier()
 	_carry_elapsed = elapsed
-	level_num = PIPE_EXIT_WARP_TO
+	level_num = int(PIPE_EXIT_MAP.get(_level_file, PIPE_EXIT_WARP_TO))   # 1-2 -> EXTRA 1 (slot 9); 2-2 -> Level14 (slot 14)
 	_want_12_intro = false
 	_want_emerge = true
 	reset(true)
