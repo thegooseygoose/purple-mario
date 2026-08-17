@@ -102,6 +102,8 @@ func _paint(ci: CanvasItem) -> void:
 		var sx: float = main.sonic_x - main.cam_x          # Sonic's on-screen x (camera is locked)
 		var lh := 12.0
 		var stop := 104.0
+		if main._l14_prejump:
+			stop -= 32.0                                   # L14 "HERE'S YOUR PRIZE, PAL!" sits higher
 		var boxw := 0.0
 		for ln in slines:
 			boxw = maxf(boxw, font.text_w(String(ln), 1.0))
