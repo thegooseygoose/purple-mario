@@ -608,6 +608,7 @@ func _physics_process(delta: float) -> void:
 	_update_gameplay_collisions()
 	_check_pipe_exit()
 	_check_sonic_cut()
+	_check_l14_cut()
 	_update_hidden_blocks()
 	_update_fireballs()
 	_update_enemy_fireballs()
@@ -2678,29 +2679,74 @@ func _update_l14_audio() -> void:
 			sonic_song_player.play()
 
 func _find_l14_trigger_brick() -> int:
-	# scan the painted terrain for the purple trigger brick that starts the cutscene
+	# the trap ? block (atlas 43) anchors the Sonic-trap chamber on the left; walking left past
+	# it springs the cutscene
 	var used: Rect2i = terrain.get_used_rect()
 	for x in range(used.position.x, used.position.x + used.size.x):
 		for y in range(used.position.y, used.position.y + used.size.y):
 			var coord := Vector2i(x, y)
 			if terrain.get_cell_source_id(coord) < 0:
 				continue
-			if terrain.get_cell_atlas_coords(coord).x == ATLAS_BRICK_PURPLE:
+			if terrain.get_cell_atlas_coords(coord).x == ATLAS_TRAP_MUSH:
 				return x
 	return -1
 
+# Level 14 (2-2 tail): walking LEFT into the trap chamber springs the Sonic cutscene (the false
+# path); walking RIGHT to the flag is the real exit to 2-3.
+func _check_l14_cut() -> void:
+	if _l14_cut or sonic_cut or _level_file != 14 or _l14_brick_col < 0:
+		return
+	if player.grounded and player.facing == -1 and player.global_position.x <= float((_l14_brick_col + 4) * TILE):
+		_start_l14_cut()
+
+func _start_l14_cut() -> void:
+	_l14_cut = true
+	sonic_cut = true                       # reuse the sonic_cut game_state + draw path
+	game_state = "sonic_cut"
+	sonic_cut_phase = 0
+	timing = false
+	music_off = true
+	music_player.stop()
+	player.velocity = Vector2.ZERO
+	var bc: int = _l14_brick_col
+	# Mario steps onto his mark just right of the block, then holds facing left, watching
+	_l14_walk_in = true
+	_l14_walk_target = float((bc + 3) * TILE + 8)
+	player.grounded = true
+	player.facing = -1
+	# Sonic starts off-screen LEFT, spin-dashes RIGHT through the wall to under the block
+	sonic_x = float((bc - 20) * TILE)
+	_l14_stop_x = float(bc * TILE + 8)
+	_l14_break_col = int(sonic_x / TILE)
+	_l14_qblock = Vector2i(bc, 7)          # the trap ? block he bumps → trap mushroom
+	_l14_jump_h = 96.0
+	_l14_cam_target = clampf(float(bc * TILE) - VIEW_W / 2.0, 0.0, float(LW * TILE - VIEW_W))
+	_l14_cam_locked = false
+	_l14_sega_done = false
+	_l14_bumped = false
+	_l14_prejump = false
+	_l14_kill_t = 0.0
+	_l14_death_v = 0.0
+	_l14_audio = 0
+	_sonic_spin_snd = false
+	sonic_face = "r"; sonic_state = "duck"
+	sonic_state_t = 0.0; sonic_frame_t = 0.0; sonic_jump_off = 0.0
+
 func _update_l14_cut(delta: float) -> void:
 	if _l14_walk_in:
-		# walk the last stretch onto the trigger brick before the cutscene proper begins
-		player.facing = 1
+		# walk the last step onto his mark (from wherever he tripped the trigger), then hold
 		player.grounded = true
-		if player.global_position.x < _l14_walk_target:
-			player.velocity.x = SONIC_WALK_SPD
-			player.global_position.x = minf(player.global_position.x + SONIC_WALK_SPD * delta, _l14_walk_target)
+		player.global_position.y = float(FLOOR * TILE) - player.col_size.y / 2.0
+		var dx: float = _l14_walk_target - player.global_position.x
+		if absf(dx) > 1.5:
+			player.facing = 1 if dx > 0.0 else -1
+			player.global_position.x += SONIC_WALK_SPD * delta * signf(dx)
 			player.walk_anim += delta * 10.0
 			player._animate()
 		else:
+			player.global_position.x = _l14_walk_target
 			player.velocity.x = 0.0
+			player.facing = -1
 			_l14_walk_in = false
 		camera.position = Vector2(roundf(cam_x) + VIEW_W / 2.0, VIEW_H / 2.0)
 		bg_renderer.queue_redraw()
