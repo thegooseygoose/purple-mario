@@ -1,0 +1,19 @@
+[remap]
+
+importer="mp3"
+type="AudioStreamMP3"
+uid="uid://bn3idt3k6umgg"
+path="res://.godot/imported/death.mp3-bec40630738b8e4eb674dbd89c49c8a9.mp3str"
+
+[deps]
+
+source_file="res://audio/mario sound/death.mp3"
+dest_files=["res://.godot/imported/death.mp3-bec40630738b8e4eb674dbd89c49c8a9.mp3str"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

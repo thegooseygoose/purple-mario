@@ -1,0 +1,24 @@
+[remap]
+
+importer="wav"
+type="AudioStreamWAV"
+uid="uid://bh2mj8j2n50f2"
+path="res://.godot/imported/walk  into something.wav-de6bc5169bd2718b43a104b1cc156df8.sample"
+
+[deps]
+
+source_file="res://audio/mario sound/walk  into something.wav"
+dest_files=["res://.godot/imported/walk  into something.wav-de6bc5169bd2718b43a104b1cc156df8.sample"]
+
+[params]
+
+force/8_bit=false
+force/mono=false
+force/max_rate=false
+force/max_rate_hz=44100
+edit/trim=false
+edit/normalize=false
+edit/loop_mode=0
+edit/loop_begin=0
+edit/loop_end=-1
+compress/mode=2

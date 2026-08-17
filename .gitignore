@@ -1,0 +1,18 @@
+# Godot 4 editor cache & reimported assets (regenerated automatically)
+.godot/
+
+# Build artifacts / exported games (large; rebuild via export)
+dist/
+*.exe
+*.pck
+*.zip
+
+# Local safety backups & temp files
+*.bak
+*.corrupt
+*.tmp
+*.orig
+
+# OS cruft
+Thumbs.db
+.DS_Store

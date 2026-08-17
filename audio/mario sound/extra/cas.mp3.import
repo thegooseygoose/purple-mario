@@ -1,0 +1,19 @@
+[remap]
+
+importer="mp3"
+type="AudioStreamMP3"
+uid="uid://b4hadgaadxv1i"
+path="res://.godot/imported/cas.mp3-824a286b8906872a31045c52654b1851.mp3str"
+
+[deps]
+
+source_file="res://audio/mario sound/extra/cas.mp3"
+dest_files=["res://.godot/imported/cas.mp3-824a286b8906872a31045c52654b1851.mp3str"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

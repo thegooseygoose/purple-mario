@@ -1,0 +1,19 @@
+[remap]
+
+importer="mp3"
+type="AudioStreamMP3"
+uid="uid://lk2mn01561t3"
+path="res://.godot/imported/mac.mp3-6db62b72f794670bdafe736e48f1ee72.mp3str"
+
+[deps]
+
+source_file="res://audio/mario sound/mac.mp3"
+dest_files=["res://.godot/imported/mac.mp3-6db62b72f794670bdafe736e48f1ee72.mp3str"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

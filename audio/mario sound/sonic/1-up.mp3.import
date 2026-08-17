@@ -1,0 +1,19 @@
+[remap]
+
+importer="mp3"
+type="AudioStreamMP3"
+uid="uid://bnocmi0bccdv3"
+path="res://.godot/imported/1-up.mp3-643b543901d08caa60d2bd44648c37a6.mp3str"
+
+[deps]
+
+source_file="res://audio/mario sound/sonic/1-up.mp3"
+dest_files=["res://.godot/imported/1-up.mp3-643b543901d08caa60d2bd44648c37a6.mp3str"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

@@ -1,0 +1,24 @@
+[remap]
+
+importer="wav"
+type="AudioStreamWAV"
+uid="uid://cqq1w41jxk3f2"
+path="res://.godot/imported/flag.wav-4016c3252c3401f2a73cecab5d70879c.sample"
+
+[deps]
+
+source_file="res://audio/mario sound/flag.wav"
+dest_files=["res://.godot/imported/flag.wav-4016c3252c3401f2a73cecab5d70879c.sample"]
+
+[params]
+
+force/8_bit=false
+force/mono=false
+force/max_rate=false
+force/max_rate_hz=44100
+edit/trim=false
+edit/normalize=false
+edit/loop_mode=0
+edit/loop_begin=0
+edit/loop_end=-1
+compress/mode=2
