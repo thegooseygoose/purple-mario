@@ -2148,10 +2148,11 @@ func _file_at(pos: int) -> int:
 
 
 func _maybe_start_intro12() -> void:
-	if not(_level_file == 4 and _want_12_intro):
+	if not(_level_file in [4, 12] and _want_12_intro):
 		return
 	_want_12_intro = false
 	intro_12 = true
+	_intro_moonwalk = (_level_file == 12)   # 2-2 (Level12): Mario moonwalks (backs) into the pipe
 	intro_phase = 0
 	intro_t = 0.0
 	game_state = "intro"
@@ -2174,15 +2175,16 @@ func _maybe_start_intro12() -> void:
 
 	player.z_index = -6
 
-	if music_player.stream != overworld_music:
-		music_player.stream = overworld_music
+	var want_music: AudioStream = intro_music if (_intro_moonwalk and intro_music != null) else overworld_music
+	if music_player.stream != want_music:
+		music_player.stream = want_music
 	if not muted and not music_off:
 		music_player.play()
 
 func _update_intro12(delta: float) -> void:
 	intro_t += delta
 
-	player.facing = 1
+	player.facing = -1 if _intro_moonwalk else 1   # moonwalk = face away while moving right into the pipe
 	player.grounded = true
 	player.global_position.y = float(FLOOR * TILE) - player.col_size.y / 2.0
 	if intro_phase == 0:
