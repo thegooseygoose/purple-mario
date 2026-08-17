@@ -2619,20 +2619,29 @@ func _find_chamber_pipe() -> Vector2i:
 func _check_sonic_cut() -> void:
 	if sonic_cut or _sonic_cut_done or _level_file != 4 or _sonic_pipe_cell.x < 0:
 		return
-	if player.global_position.y > float(7 * TILE):
+	# trigger on LANDING in the chamber (Mario drops through the roof gap himself), not on
+	# crossing a line up on the roof: must be grounded with his feet down near the floor...
+	if not player.grounded:
 		return
-	if player.global_position.x < _sonic_trigger_x:
+	if player.global_position.y + player.col_size.y / 2.0 < float((FLOOR - 1) * TILE):
+		return
+	# ...and standing in the zone just right of the pipe
+	var pc: Vector2i = _sonic_pipe_cell
+	var fx: float = player.global_position.x
+	if fx < float((pc.x + 2) * TILE) or fx > float((pc.x + 2 + 16) * TILE):
 		return
 	_start_sonic_cut()
 
 func _start_sonic_cut() -> void:
 	sonic_cut = true
 	_sonic_cut_done = true
-	sonic_cut_phase = 0
+	sonic_cut_phase = 2                    # start at walk-to-pipe; the roof walk/fall (0/1) is player-driven now
 	game_state = "sonic_cut"
 	timing = false
+	music_off = true                       # cut the level music for the cutscene
+	music_player.stop()
 	player.velocity = Vector2.ZERO
-	player.facing = 1
+	player.facing = -1
 	_mario_cut_v = 0.0
 	var pc: Vector2i = _sonic_pipe_cell
 	sonic_cut_stop_x = float((pc.x + 8) * TILE + 8)

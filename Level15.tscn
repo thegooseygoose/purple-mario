@@ -16,7 +16,7 @@ tile_set = ExtResource("2_5p2sn")
 [node name="Spawns" type="Node2D" parent="." unique_id=1173435522]
 
 [node name="PlayerStart" type="Marker2D" parent="Spawns" unique_id=1126470326]
-position = Vector2(56, 208)
+position = Vector2(3877, 52)
 
 [node name="Enemies" type="Node2D" parent="Spawns" unique_id=459449521]
 

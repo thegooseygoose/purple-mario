@@ -27,7 +27,7 @@ castle_x = 245
 [node name="Spawns" type="Node2D" parent="." unique_id=553671909]
 
 [node name="PlayerStart" type="Marker2D" parent="Spawns" unique_id=457003342]
-position = Vector2(50, 56)
+position = Vector2(3047, 4)
 
 [node name="Enemies" type="Node2D" parent="Spawns" unique_id=225275450]
 
