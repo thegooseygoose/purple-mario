@@ -531,6 +531,7 @@ func actors_frozen() -> bool:
 func _physics_process(delta: float) -> void:
 	if paused:
 		return
+	qanim_phase += delta          # ? / mushroom blocks always pulse (SMB1 FrameCounter), even mid-freeze
 	if _level_file == 14:
 		_update_l14_audio()
 	if game_state == "clear":
@@ -601,7 +602,6 @@ func _physics_process(delta: float) -> void:
 		# hit / power-up / death: hold the whole world (enemies + clock + scroll) while
 		# Mario's animation plays, like SMB1. Only keep the view + HUD live.
 		_update_camera()
-		qanim_phase += delta          # ? blocks keep pulsing (FrameCounter-driven in SMB1)
 		bg_renderer.queue_redraw()
 		fg_renderer.queue_redraw()
 		hud.refresh()
@@ -625,7 +625,6 @@ func _physics_process(delta: float) -> void:
 	_update_flag_slide(delta)
 	_update_camera()
 	_update_timer(delta)
-	qanim_phase += delta
 	bg_renderer.queue_redraw()
 	fg_renderer.queue_redraw()
 	hud.refresh()
@@ -2103,17 +2102,19 @@ func _update_rescue(delta: float) -> void:
 			# Mario has arrived — begin the beat (mac speaks; am just waits on A1)
 			rescue_phase = 1
 			rescue_speech_t = 0.0
-			show_rescue_speech = true          # am: "A WINNER IS YOU!"; mac: his rescue line
-			if not _rescue_is_am and not muted:
-				mac_player.play()          # the "mac" song plays on arrival (not the fanfare)
+			if not _rescue_is_am:
+				show_rescue_speech = true      # mac speaks on arrival; Amazon waits until his arms go up
+				if not muted:
+					mac_player.play()      # the "mac" song plays on arrival (not the fanfare)
 	elif rescue_phase == 1:
 		rescue_speech_t += delta
 		var beat: float = AM_WAIT if _rescue_is_am else RESCUE_SPEECH_TIME
 		if rescue_speech_t >= beat:
 			if _rescue_is_am:
-				# Amazon RAISES his hands (A2) and holds the pose. Still "rescue", so COURSE
-				# CLEAR's border does NOT cover him yet (that waits AM_RAISE_HOLD, phase 2).
+				# Amazon RAISES his hands (A2) — now show "A WINNER IS YOU!". Still "rescue",
+				# so COURSE CLEAR's border does NOT cover him yet (that waits AM_RAISE_HOLD).
 				_am_a2 = true
+				show_rescue_speech = true
 				rescue_phase = 2
 				rescue_speech_t = 0.0
 			else:
