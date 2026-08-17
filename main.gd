@@ -888,6 +888,9 @@ func reset(preserve_progress := true) -> void:
 	_sonic_cut_done = false
 	sonic_cut_phase = 0
 	_l14_cut = false
+	_l14_audio = 0                # don't let the gloat song carry over into a fresh Level 14
+	_l14_walk_in = false
+	_l14_prejump = false
 	_sonic_pipe_cell = _find_chamber_pipe() if _level_file == 4 else Vector2i(-1, -1)
 	# trigger fires when Mario crosses onto the chamber roof (~18 tiles left of the pipe)
 	_sonic_trigger_x = float((_sonic_pipe_cell.x - 18) * TILE) if _sonic_pipe_cell.x >= 0 else 0.0
@@ -2316,7 +2319,7 @@ func _warp_from_pipe() -> void:
 
 
 func _maybe_start_emerge() -> void:
-	if not(_level_file == 9 and _want_emerge):
+	if not(_level_file in [9, 14] and _want_emerge):
 		return
 	_want_emerge = false
 	var pcell:= _find_start_pipe()
@@ -2326,8 +2329,8 @@ func _maybe_start_emerge() -> void:
 	timing = false
 	start_delay = 0.0
 	var cx: float = pcell.x * TILE + TILE
-	emerge_target_y = float(pcell.y * TILE)
-	player.spawn(Vector2(cx, float(FLOOR * TILE)))
+	emerge_target_y = float(pcell.y * TILE)                 # rim (pipe top) — Mario rises to here
+	player.spawn(Vector2(cx, float((pcell.y + 2) * TILE)))  # start 2 tiles down inside/below the pipe
 	player.facing = 1
 	player.velocity = Vector2.ZERO
 	player.z_index = -10
@@ -2338,9 +2341,10 @@ func _maybe_start_emerge() -> void:
 
 
 func _find_start_pipe() -> Vector2i:
+	var want: int = 8 if _level_file == 14 else 17   # green pipe in Level14, purple pipe elsewhere
 	var best:= Vector2i(-1, -1)
 	for c in terrain.get_used_cells():
-		if terrain.get_cell_atlas_coords(c).x == 17:
+		if terrain.get_cell_atlas_coords(c).x == want:
 			if best.x < 0 or c.x < best.x:
 				best = c
 	return best
@@ -2731,7 +2735,7 @@ func _start_l14_cut() -> void:
 	_l14_stop_x = float(bc * TILE + 8)
 	_l14_break_col = int(sonic_x / TILE)
 	_l14_qblock = Vector2i(bc, 7)          # the trap ? block he bumps → trap mushroom
-	_l14_jump_h = 96.0
+	_l14_jump_h = 60.0                     # same hop amplitude as the 1-2 cutscene jump
 	_l14_cam_target = clampf(float(bc * TILE) - VIEW_W / 2.0, 0.0, float(LW * TILE - VIEW_W))
 	_l14_cam_locked = false
 	_l14_sega_done = false
