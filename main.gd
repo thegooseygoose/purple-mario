@@ -2255,6 +2255,8 @@ func _check_pipe_exit() -> void:
 	var bot: float = player.global_position.y + half.y
 	for cell in pipeover_cells:
 		for off in pipeover_solid_offsets:
+			if off.x != 0:
+				continue      # only the MOUTH (foot's left opening at floor level) lets Mario in, not the shaft face
 			var t: Vector2i = cell + off
 			var tx: float = t.x * TILE
 			var ty: float = t.y * TILE
@@ -2431,12 +2433,7 @@ func _update_reward_trap(delta: float) -> void:
 			if player.global_position.y > VIEW_H + 40.0:
 				player.kill(true)
 				player.visible = false
-
-				sonic_cut = true
-				sonic_x = cam_x + float(VIEW_W) + 16.0
-				sonic_state = "run" ; sonic_face = "l"
-				sonic_state_t = 0.0 ; sonic_frame_t = 0.0 ; sonic_jump_off = 0.0
-				trap_phase = 2 ; trap_t = 0.0
+				trap_phase = 5 ; trap_t = 0.0    # wait for the death jingle before Sonic gloats
 		2:
 
 			sonic_state = "run" ; sonic_face = "l"
@@ -2452,7 +2449,9 @@ func _update_reward_trap(delta: float) -> void:
 			sonic_state = "wait" ; sonic_face = "l" ; sonic_frame = 0
 			sonic_speech = true
 			sonic_speech_lines = SONIC_TAUNT_SPEECH
-			if trap_t >= TRAP_TAUNT_TIME:
+			# hold the taunt until the gloat song finishes (muted -> fixed fallback time)
+			var taunt_done: bool = (trap_t >= TRAP_TAUNT_TIME) if muted else ((not sonic_song_player.playing) and trap_t > 0.5)
+			if taunt_done:
 				trap_phase = 4 ; trap_t = 0.0
 		4:
 
@@ -2460,6 +2459,19 @@ func _update_reward_trap(delta: float) -> void:
 			if fade_alpha >= 1.0:
 				_restart_1_2()
 				return
+		5:
+			# Mario just died in the lava: hold until the death jingle finishes, THEN Sonic
+			# runs in from the right and his gloat song (sonic.mp3) plays
+			if trap_t >= 5.0 or (trap_t > 0.5 and not death_player.playing):
+				music_off = true
+				music_player.stop()
+				if not muted:
+					sonic_song_player.play()
+				sonic_cut = true
+				sonic_x = cam_x + float(VIEW_W) + 16.0
+				sonic_state = "run" ; sonic_face = "l"
+				sonic_state_t = 0.0 ; sonic_frame_t = 0.0 ; sonic_jump_off = 0.0
+				trap_phase = 2 ; trap_t = 0.0
 	_update_particles(delta)
 	bg_renderer.queue_redraw()
 	fg_renderer.queue_redraw()
