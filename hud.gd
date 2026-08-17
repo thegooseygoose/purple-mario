@@ -58,6 +58,9 @@ func _paint(ci: CanvasItem) -> void:
 	# COURSE CLEAR overlay — shows how fast the stage was beaten
 	if main.game_state == "clear":
 		var cy: float = main.VIEW_H / 2.0 - 50.0
+		if main._level_file == 15:
+			# DK stage (2-4): put the banner BELOW Mario so it doesn't cover Amazon
+			cy = clampf(main.player.global_position.y + 56.0, 40.0, main.VIEW_H - 34.0)
 		# solid dark band so the busy castle behind doesn't bleed through the text
 		ci.draw_rect(Rect2(0, cy - 32, w, 64), Color(0.04, 0.04, 0.06, 1.0))
 		font.draw_text(ci, Vector2(0, cy - 10), "COURSE CLEAR", 2.0, Color.WHITE, w)

@@ -728,12 +728,16 @@ func _update_rescue_walk(delta: float) -> void:
 	facing = 1
 	if global_position.x < main.rescue_stop_x:
 		velocity.x = 84.0
+		velocity.y = minf(velocity.y + main.GRAVITY * delta, main.MAX_FALL)
+		move_and_slide()
+		grounded = is_on_floor()
 	else:
-		velocity.x = 0.0
+		# arrived — snap to a clean neutral STAND (grounded, no jump/duck/skid air frame)
+		velocity = Vector2.ZERO
 		global_position.x = main.rescue_stop_x
-		main.rescue_walking = false          # arrived — main advances the rescue phase
-	velocity.y = minf(velocity.y + main.GRAVITY * delta, main.MAX_FALL)
-	move_and_slide()
-	grounded = is_on_floor()
+		grounded = true
+		ducking = false
+		skid_timer = 0.0
+		main.rescue_walking = false          # main advances the rescue phase
 	walk_anim += delta * 12.0
-	_animate()                               # velocity.x == 0 on arrival -> stand frame, facing mac
+	_animate()                               # stand frame on arrival, facing the rescued character
