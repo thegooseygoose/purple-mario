@@ -275,6 +275,7 @@ const RESCUE_FRAME_STEP := 0.35 # seconds per arm-raise frame
 const RESCUE_CAM_FOLLOW := 130.0 # px/s the camera tracks Mario as he walks (> his 84 walk)
 const RESCUE_SPEECH_TIME := 3.6  # seconds mac's line stays up before COURSE CLEAR
 const RESCUE_SPEECH_LINES := ["PURPLE MARIO!!", "MY HERO!", "YOU DID IT!"]
+const AM_SPEECH_LINES := ["A WINNER", "IS YOU!"]   # Amazon's line on the DK stage (2-4) ending
 
 # 1-2 intro cutscene: when the underground stage (file 4) starts, Mario steps out of a
 # castle on the surface, walks right and enters the "end pipe", then we drop into the
@@ -2102,10 +2103,9 @@ func _update_rescue(delta: float) -> void:
 			# Mario has arrived — begin the beat (mac speaks; am just waits on A1)
 			rescue_phase = 1
 			rescue_speech_t = 0.0
-			if not _rescue_is_am:
-				show_rescue_speech = true
-				if not muted:
-					mac_player.play()      # the "mac" song plays on arrival (not the fanfare)
+			show_rescue_speech = true          # am: "A WINNER IS YOU!"; mac: his rescue line
+			if not _rescue_is_am and not muted:
+				mac_player.play()          # the "mac" song plays on arrival (not the fanfare)
 	elif rescue_phase == 1:
 		rescue_speech_t += delta
 		var beat: float = AM_WAIT if _rescue_is_am else RESCUE_SPEECH_TIME
@@ -2133,6 +2133,7 @@ func _update_rescue(delta: float) -> void:
 		rescue_speech_t += delta
 		if rescue_speech_t >= AM_RAISE_HOLD:
 			rescue_phase = 3
+			show_rescue_speech = false
 			game_state = "clear"
 			if not muted:
 				fanfare_player.play()
@@ -2334,7 +2335,9 @@ func _maybe_start_emerge() -> void:
 	player.facing = 1
 	player.velocity = Vector2.ZERO
 	player.z_index = -10
-	cam_x = clampf(cx - VIEW_W / 2.0, 0.0, float(LW * TILE - VIEW_W))   # centre on the pipe Mario emerges from (Level 14 is mid-level)
+	# frame the pipe Mario emerges from, using the SAME offset the play camera uses
+	# (player.x - VIEW_W*0.42) so the view doesn't snap sideways when play begins
+	cam_x = clampf(cx - VIEW_W * 0.42, 0.0, float(LW * TILE - VIEW_W))
 	camera.position = Vector2(roundf(cam_x) + VIEW_W / 2.0, VIEW_H / 2.0)
 	fade_alpha = 0.0
 	sfx("powerdown")

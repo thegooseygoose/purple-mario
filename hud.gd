@@ -77,17 +77,18 @@ func _paint(ci: CanvasItem) -> void:
 	# mac's rescue line (Bowser's castle) — centred lines in a dark band, shown after
 	# Mario reaches him and BEFORE the COURSE CLEAR card
 	if main.show_rescue_speech:
-		var lines: Array = main.RESCUE_SPEECH_LINES
+		var lines: Array = main.AM_SPEECH_LINES if main._rescue_is_am else main.RESCUE_SPEECH_LINES
+		var char_h: float = float(main.AM_H) if main._rescue_is_am else float(main.MAC_H)
 		var lh := 12.0          # same line height / size as Sonic's speech
-		var mx: float = main.rescue_pos.x - main.cam_x     # mac's on-screen centre
+		var mx: float = main.rescue_pos.x - main.cam_x     # the character's on-screen centre
 		var boxw := 0.0
 		for ln in lines:
 			boxw = maxf(boxw, font.text_w(String(ln), 1.0))
 		boxw += 12.0
 		mx = clampf(mx, boxw / 2.0 + 2.0, w - boxw / 2.0 - 2.0)
-		# sit the block directly above mac's head (feet at rescue_pos.y, sprite MAC_H tall)
+		# sit the block directly above the character's head (feet at rescue_pos.y, sprite char_h tall)
 		var boxh: float = lh * lines.size() + 6.0
-		var by: float = (main.rescue_pos.y - main.MAC_H) - 6.0 - boxh
+		var by: float = (main.rescue_pos.y - char_h) - 6.0 - boxh
 		ci.draw_rect(Rect2(mx - boxw / 2.0, by, boxw, boxh), Color(0.04, 0.04, 0.06, 1.0))
 		var yy := by + 10.0
 		for ln in lines:
