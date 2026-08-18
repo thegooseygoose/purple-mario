@@ -444,6 +444,7 @@ var underground_music: AudioStream  # under.mp3 — levels with "under": true (1
 var castle_music: AudioStream       # cas.mp3 — levels with "cas": true (1-4 Bowser castle)
 var fanfare_player: AudioStreamPlayer
 var mac_player: AudioStreamPlayer        # the "mac" ending song (1-4 rescue), replaces the fanfare
+var am_player: AudioStreamPlayer         # amam.wav — plays when Amazon raises his arms (2-4 ending)
 var sonic_song_player: AudioStreamPlayer  # sonic.mp3 — the gloat song when the Level11 trap kills Mario
 var sega_player: AudioStreamPlayer        # sega-hd.mp3 — Mario's pipe pose; Sonic waits for it to finish
 var death_player: AudioStreamPlayer
@@ -1914,7 +1915,7 @@ func _update_advance(delta: float) -> void:
 	if advance_phase == 0:
 		# wait for the ending audio to finish — the stage-clear fanfare, or (Bowser castle)
 		# the mac song (muted → fixed fallback)
-		var done := (not fanfare_player.playing) and (not mac_player.playing) and advance_timer > 0.3
+		var done := (not fanfare_player.playing) and (not mac_player.playing) and (not am_player.playing) and advance_timer > 0.3
 		if muted:
 			done = advance_timer >= FANFARE_WAIT
 		if done:
@@ -2115,6 +2116,8 @@ func _update_rescue(delta: float) -> void:
 				# so COURSE CLEAR's border does NOT cover him yet (that waits AM_RAISE_HOLD).
 				_am_a2 = true
 				show_rescue_speech = true
+				if not muted and am_player.stream != null:
+					am_player.play()       # amam.wav on the arm-raise (instead of the fanfare)
 				rescue_phase = 2
 				rescue_speech_t = 0.0
 			else:
@@ -2136,8 +2139,7 @@ func _update_rescue(delta: float) -> void:
 			rescue_phase = 3
 			show_rescue_speech = false
 			game_state = "clear"
-			if not muted:
-				fanfare_player.play()
+			# no fanfare — amam.wav (played when his arms went up) is the ending sound
 			advancing = true
 			_advance_next = int(ADVANCE_TO_SLOT.get(_level_file, level_num + 1))
 			advance_timer = 0.0
@@ -3167,6 +3169,14 @@ func _setup_audio() -> void:
 	mac_player.volume_db = linear_to_db(0.9)
 	mac_player.bus = "Music"
 	add_child(mac_player)
+	# amam.wav — plays when Amazon raises his arms in the DK stage (2-4) ending (replaces the fanfare)
+	am_player = AudioStreamPlayer.new()
+	var amam_path := "res://audio/mario sound/amam.wav"
+	if ResourceLoader.exists(amam_path):
+		am_player.stream = load(amam_path)
+	am_player.volume_db = linear_to_db(0.9)
+	am_player.bus = "Music"
+	add_child(am_player)
 	# sonic.mp3 — the full gloat song when the Level11 shortcut-trap kills Mario; the room
 	# holds until it finishes, then 1-2 restarts
 	sonic_song_player = AudioStreamPlayer.new()
