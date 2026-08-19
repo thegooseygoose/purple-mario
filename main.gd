@@ -2908,13 +2908,17 @@ func _update_l14_cut(delta: float) -> void:
 				if sonic_x < cam_x - 40.0:       # cleared the left edge of the screen
 					sonic_cut_phase = 7
 					sonic_state_t = 0.0; sonic_frame_t = 0.0
+					_l14_audio = 0               # stop looping the gloat song so it can finish
 		7:
-			# fade to black, then load 2-2
+			# wait for the gloat song to finish, THEN fade to black and load 2-2
 			sonic_state = "ball"; sonic_face = "l"
-			fade_alpha = clampf(sonic_state_t / 0.6, 0.0, 1.0)
-			if fade_alpha >= 1.0:
-				_l14_goto_next()
-				return
+			if not muted and sonic_song_player.playing:
+				sonic_state_t = 0.0          # hold the fade at 0 until the music stops
+			else:
+				fade_alpha = clampf(sonic_state_t / 0.6, 0.0, 1.0)
+				if fade_alpha >= 1.0:
+					_l14_goto_next()
+					return
 	# animate Sonic during his motion phases (spin/ball/jump/walk); while waiting, dying,
 	# or taunting he holds the plain stand frame (sonic_frame = 0) — NO foot-tap idle
 	if sonic_cut_phase < 2 or sonic_cut_phase >= 5:
