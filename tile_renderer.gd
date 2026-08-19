@@ -64,6 +64,8 @@ func _draw() -> void:
 	else:
 		if main.intro_12:
 			_draw_intro_pipe()     # pipe, IN FRONT of Mario so he vanishes behind it
+			if main._intro_sonic:
+				_draw_sonic_demo() # 3-2: Sonic jumps in and foot-taps on top of the pipe
 			return
 		if main.has_flag:                  # levels with a custom ending (1-2) draw neither
 			_draw_flag(main.cam_x)

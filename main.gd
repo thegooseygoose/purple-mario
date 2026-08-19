@@ -284,6 +284,9 @@ var intro_12 := false            # cutscene playing
 var _want_12_intro := false      # armed when we ARRIVE at 1-2 / 1-7 (not on death-respawn)
 var _intro_moonwalk := false     # true for 1-7 (Level12): Mario MOONWALKS into the pipe (faces away)
 var _intro_32 := false           # true for 3-2 (Level5): its own cloned copy of the 1-2 surface intro
+var _intro_sonic := false        # 3-2 intro: draw Sonic (he jumps in onto the pipe after Mario enters)
+var _intro_sonic_landed := false # 3-2 intro: Sonic has landed on the pipe and is foot-tapping
+const INTRO_SONIC_TAP_TIME := 3.0  # seconds Sonic foot-taps on the pipe before the level drops in
 var intro_phase := 0             # 0 walk to pipe, 1 enter (fade), 2 fade to black
 var intro_t := 0.0
 const INTRO_CASTLE_X := -12.0    # castle sprite left (its door ~x28)
@@ -2163,6 +2166,8 @@ func _maybe_start_intro12() -> void:
 	intro_12 = true
 	_intro_moonwalk = (_level_file == 12)   # 2-2 (Level12): Mario moonwalks (backs) into the pipe
 	_intro_32 = (_level_file == 5)          # 3-2 (Level5): its own cloned 1-2-style intro
+	_intro_sonic = false
+	_intro_sonic_landed = false
 	intro_phase = 0
 	intro_t = 0.0
 	game_state = "intro"
@@ -2215,8 +2220,43 @@ func _update_intro12(delta: float) -> void:
 		player._animate()
 		if player.global_position.x >= INTRO_ENTER_TO:
 			player.visible = false
-			intro_phase = 2
 			intro_t = 0.0
+			if _intro_32:
+				# 3-2: Sonic jumps in from the right onto the pipe before the level drops in
+				intro_phase = 3
+				_intro_sonic = false
+				_intro_sonic_landed = false
+				if not muted:
+					sega_player.play()      # SEGA entry as Sonic leaps in
+			else:
+				intro_phase = 2
+	elif intro_phase == 3:
+		# 3-2 ONLY: Sonic leaps in from off-screen right, lands on top of the pipe, foot-taps
+		_intro_sonic = true
+		sonic_face = "l"
+		var land_x: float = INTRO_PIPE_X + 32.0     # centred on the pipe top (pipe x 186..250)
+		var top_off := -64.0                        # pipe top = floor - 64px (endpipe is 64 tall)
+		sonic_frame_t += delta
+		if not _intro_sonic_landed:
+			var u: float = clampf(intro_t / 0.7, 0.0, 1.0)
+			sonic_state = "jump"
+			sonic_x = lerp(float(VIEW_W) + 24.0, land_x, u)
+			sonic_jump_off = lerp(0.0, top_off, u) - 40.0 * sin(PI * u)   # arc up, land on the pipe
+			_sonic_compute_frame()
+			if u >= 1.0:
+				_intro_sonic_landed = true
+				sonic_x = land_x
+				sonic_jump_off = top_off
+				intro_t = 0.0
+				sonic_state_t = 0.0
+				sfx("one_up")               # 1-up as he sticks the landing
+		else:
+			sonic_state = "wait"; sonic_x = land_x; sonic_jump_off = top_off
+			sonic_state_t += delta
+			_sonic_compute_frame()          # foot-tap idle
+			if intro_t >= INTRO_SONIC_TAP_TIME:
+				intro_phase = 2
+				intro_t = 0.0
 	elif intro_phase == 2:
 
 		fade_alpha = clampf((intro_t - 0.3) / 0.5, 0.0, 1.0)
@@ -2227,6 +2267,7 @@ func _update_intro12(delta: float) -> void:
 
 func _begin_underground() -> void:
 	intro_12 = false
+	_intro_sonic = false
 	game_state = "play"
 	underground = true
 	RenderingServer.set_default_clear_color(Color.BLACK)
