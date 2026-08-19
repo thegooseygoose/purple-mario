@@ -125,7 +125,7 @@ const LEVEL_ORDER := [
 	[4, "1-2"],   # 2nd — Level4.tscn, relabelled 1-2 (right after 1-1)
 	[7, "1-3"],   # 3rd — Level7.tscn, moved here + renamed 1-3 (easier level earlier)
 	[8, "1-4"],   # 4th — Level8.tscn (Bowser castle + mac ending), labelled 1-4
-	[5, "1-5"],
+	[5, "3-2"],
 	[12, "2-2"],  # 6th — Level12.tscn, promoted into the sequence as 2-2
 	[2, "2-1"],   # 7th — Level2.tscn, moved here + renamed 2-1 (the harder level, later)
 	[3, "3-1"],   # 8th — Level3.tscn, relabelled 3-1
@@ -145,7 +145,7 @@ const LEVEL_GEOMETRY := {
 	2: {"lw": 200, "flag": 192, "castle": 195, "dark": false, "under": false},
 	3: {"lw": 388, "flag": 379, "castle": 382, "dark": false, "under": false},
 	4: {"lw": 318, "flag": 242, "castle": 245, "dark": true,  "under": true, "noflag": true, "camlock": 268},   # 1-2: no flag; camera stops at tile 268 to frame the ending chamber (one tile further left)
-	5: {"lw": 250, "flag": 242, "castle": 245, "dark": false, "under": false},
+	5: {"lw": 250, "flag": 242, "castle": 245, "dark": true,  "under": true},   # 3-2: underground, 1-2-style surface intro
 	6: {"lw": 200, "flag": 192, "castle": 195, "dark": false, "under": false},
 	7: {"lw": 200, "flag": 192, "castle": 195, "dark": false, "under": false},
 	8: {"lw": 200, "flag": 192, "castle": 195, "dark": true,  "under": false, "cas": true},  # 1-4 castle/lava — cas.mp3
@@ -513,7 +513,7 @@ func _ready() -> void:
 	add_child(player)
 
 	level_num = clampi(debug_start_level, 1, LEVEL_COUNT)   # DEBUG: boot into the picked stage
-	_want_12_intro = _file_at(level_num) in [4, 12]              # play the surface intro if booting into 1-2
+	_want_12_intro = _file_at(level_num) in [4, 5, 12]              # play the surface intro if booting into 1-2
 	_want_emerge = _file_at(level_num) in [9, 14]               # rise out of the pipe if booting into EXTRA 1
 	_want_reward_trap = _file_at(level_num) == 11         # drop out of the ceiling pipe if booting into Level11
 	reset(false)
@@ -1938,7 +1938,7 @@ func _update_advance(delta: float) -> void:
 			advancing = false
 			level_num = _advance_next    # advance (override-aware; preserves score)
 			saved_tier = player.tier()   # carry the power tier into the next level
-			_want_12_intro = _file_at(level_num) in [4, 12]   # surface intro when arriving at 1-2
+			_want_12_intro = _file_at(level_num) in [4, 5, 12]   # surface intro when arriving at 1-2
 			_want_emerge = _file_at(level_num) in [9, 14]     # pipe emerge when arriving at EXTRA 1
 			reset(true)
 
@@ -2156,7 +2156,7 @@ func _file_at(pos: int) -> int:
 
 
 func _maybe_start_intro12() -> void:
-	if not(_level_file in [4, 12] and _want_12_intro):
+	if not(_level_file in [4, 5, 12] and _want_12_intro):
 		return
 	_want_12_intro = false
 	intro_12 = true
@@ -3714,7 +3714,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		level_num = clampi(level_num, 1, LEVEL_COUNT)
 		advancing = false
 		show_level_card = false
-		_want_12_intro = _file_at(level_num) in [4, 12]   # surface intro when warping to 1-2
+		_want_12_intro = _file_at(level_num) in [4, 5, 12]   # surface intro when warping to 1-2
 		_want_emerge = _file_at(level_num) in [9, 14]     # pipe emerge when warping to EXTRA 1
 		_want_reward_trap = _file_at(level_num) == 11  # ceiling-pipe drop when warping to Level11
 		reset(false)
