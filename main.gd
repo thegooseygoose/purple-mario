@@ -167,7 +167,7 @@ const LEVEL_GEOMETRY := {
 #            false path that restarts 2-2 via _l14_goto_next.
 #   file 13 = 2-3 (play-slot 13) → 2-4 = the DK stage (play-slot 15).
 #   file 15 = 2-4, the DK stage → 3-1 (play-slot 8).
-const ADVANCE_TO_SLOT := { 9: 3, 2: 6, 12: 13, 14: 13, 13: 15, 15: 8 }
+const ADVANCE_TO_SLOT := { 9: 3, 2: 6, 12: 13, 14: 13, 13: 15, 15: 8, 3: 5 }   # 3-1 (file 3) -> 3-2 (slot 5)
 var _advance_next := 0          # play-slot the current advance is heading to
 var _level_file := 1            # which LevelN.tscn is currently loaded
 var level                       # Level1.tscn instance (TileMapLayer + markers)
@@ -283,6 +283,7 @@ const AM_SPEECH_LINES := ["A WINNER", "IS YOU!"]   # Amazon's line on the DK sta
 var intro_12 := false            # cutscene playing
 var _want_12_intro := false      # armed when we ARRIVE at 1-2 / 1-7 (not on death-respawn)
 var _intro_moonwalk := false     # true for 1-7 (Level12): Mario MOONWALKS into the pipe (faces away)
+var _intro_32 := false           # true for 3-2 (Level5): its own cloned copy of the 1-2 surface intro
 var intro_phase := 0             # 0 walk to pipe, 1 enter (fade), 2 fade to black
 var intro_t := 0.0
 const INTRO_CASTLE_X := -12.0    # castle sprite left (its door ~x28)
@@ -2161,6 +2162,7 @@ func _maybe_start_intro12() -> void:
 	_want_12_intro = false
 	intro_12 = true
 	_intro_moonwalk = (_level_file == 12)   # 2-2 (Level12): Mario moonwalks (backs) into the pipe
+	_intro_32 = (_level_file == 5)          # 3-2 (Level5): its own cloned 1-2-style intro
 	intro_phase = 0
 	intro_t = 0.0
 	game_state = "intro"
