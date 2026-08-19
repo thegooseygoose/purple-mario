@@ -2234,7 +2234,7 @@ func _update_intro12(delta: float) -> void:
 		# 3-2 ONLY: Sonic leaps in from off-screen right, lands on top of the pipe, foot-taps
 		_intro_sonic = true
 		sonic_face = "l"
-		var land_x: float = INTRO_PIPE_X + 32.0     # centred on the pipe top (pipe x 186..250)
+		var land_x: float = INTRO_PIPE_X + 42.0     # middle of the pipe, nudged a little to the right
 		var top_off := -64.0                        # pipe top = floor - 64px (endpipe is 64 tall)
 		sonic_frame_t += delta
 		if not _intro_sonic_landed:
@@ -2248,7 +2248,7 @@ func _update_intro12(delta: float) -> void:
 				sonic_x = land_x
 				sonic_jump_off = top_off
 				intro_t = 0.0
-				sonic_state_t = 0.0
+				sonic_state_t = IDLE_STAND_TIME + 2.0 * IDLE_LEAD   # skip the idle-stand so he foot-taps right away
 				sfx("one_up")               # 1-up as he sticks the landing
 		else:
 			sonic_state = "wait"; sonic_x = land_x; sonic_jump_off = top_off
