@@ -71,7 +71,7 @@ func _draw() -> void:
 			_draw_flag(main.cam_x)
 			_draw_castle(main.cam_x)
 		_draw_pipeovers()
-		if main.sonic_demo or main.sonic_cut:
+		if main.sonic_demo or main.sonic_cut or main._arena_sonic:
 			_draw_sonic_demo()
 		if main.show_rescue:
 			_draw_rescue()

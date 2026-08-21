@@ -163,6 +163,8 @@ func _physics_process(delta: float) -> void:
 		return   # Level10 Sonic preview — Mario is hidden/idle
 	if main.game_state == "sonic_cut":
 		return   # 1-2 cutscene — Mario watches from the pipe while Sonic performs
+	if main.game_state == "arena_intro":
+		return   # 3-4 boss-arena intro — main walks Mario in, then drops the block wall
 	if main.start_delay > 0.0:
 		return   # frozen during the brief stage-start "get ready" (Mario can't move yet)
 	if transforming:
@@ -180,6 +182,19 @@ func _physics_process(delta: float) -> void:
 		return
 	if main.game_state == "clear":
 		return
+
+	if main.game_state == "credits":
+		# end-credits run: hold RIGHT + RUN, never jump/duck/fire — Mario just runs on.
+		# Once the roll finishes ("THE END"), release everything so he stops and stands.
+		if main.credits_done:
+			Input.action_release("move_right")
+			Input.action_release("run")
+		else:
+			Input.action_press("move_right")
+			Input.action_press("run")
+		Input.action_release("move_left")
+		Input.action_release("jump")
+		Input.action_release("move_down")
 
 	_update_alive(delta)
 
@@ -319,7 +334,8 @@ func _update_alive(delta: float) -> void:
 
 	# fire Mario shoots a fireball on a fresh press of the run/fire button
 	# (Z / Shift) — hold to run, tap to fire, like Mario 1's B button
-	if fire and Input.is_action_just_pressed("run"):
+	# (suppressed during the end-credits auto-run so he never fires)
+	if fire and Input.is_action_just_pressed("run") and main.game_state != "credits":
 		var muzzle := global_position + Vector2(facing * (half_w() + 3.0), -2.0)
 		main.spawn_fireball(muzzle, facing)
 

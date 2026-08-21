@@ -1,0 +1,24 @@
+[remap]
+
+importer="wav"
+type="AudioStreamWAV"
+uid="uid://ca6j6kcuk4gki"
+path="res://.godot/imported/gord.wav-fbd5a306b65afc4a40b8dc8a2fa1436f.sample"
+
+[deps]
+
+source_file="res://audio/mario sound/gord.wav"
+dest_files=["res://.godot/imported/gord.wav-fbd5a306b65afc4a40b8dc8a2fa1436f.sample"]
+
+[params]
+
+force/8_bit=false
+force/mono=false
+force/max_rate=false
+force/max_rate_hz=44100
+edit/trim=false
+edit/normalize=false
+edit/loop_mode=0
+edit/loop_begin=0
+edit/loop_end=-1
+compress/mode=2

@@ -109,8 +109,8 @@ func _input(event: InputEvent) -> void:
 	if kc == KEY_P:
 		Main.debug_start_level = 1
 		_start_game()
-	elif (kc >= KEY_1 and kc <= KEY_9) or kc == KEY_0 or kc == KEY_MINUS or kc == KEY_EQUAL or kc == KEY_BACKSPACE or kc == KEY_BACKSLASH or kc == KEY_BRACKETRIGHT:   # DEBUG stage select (0=10, -=11, ==12, Backspace=13, \=14, ]=15)
-		var slot := 15 if kc == KEY_BRACKETRIGHT else (14 if kc == KEY_BACKSLASH else (13 if kc == KEY_BACKSPACE else (12 if kc == KEY_EQUAL else (11 if kc == KEY_MINUS else (10 if kc == KEY_0 else kc - KEY_1 + 1)))))
+	elif (kc >= KEY_1 and kc <= KEY_9) or kc == KEY_0 or kc == KEY_MINUS or kc == KEY_EQUAL or kc == KEY_BACKSPACE or kc == KEY_BACKSLASH or kc == KEY_BRACKETRIGHT or kc == KEY_BRACKETLEFT or kc == KEY_APOSTROPHE:   # DEBUG stage select (0=10, -=11, ==12, Backspace=13, \=14, ]=15, [=16, '=17)
+		var slot := 17 if kc == KEY_APOSTROPHE else (16 if kc == KEY_BRACKETLEFT else (15 if kc == KEY_BRACKETRIGHT else (14 if kc == KEY_BACKSLASH else (13 if kc == KEY_BACKSPACE else (12 if kc == KEY_EQUAL else (11 if kc == KEY_MINUS else (10 if kc == KEY_0 else kc - KEY_1 + 1)))))))
 		Main.debug_start_level = clampi(slot, 1, Main.LEVEL_COUNT)
 		_start_game()
 

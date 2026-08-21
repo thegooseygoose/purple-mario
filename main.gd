@@ -111,6 +111,8 @@ const LEVEL12_SCENE := preload("res://Level12.tscn") # blank UNDERGROUND stage (
 const LEVEL13_SCENE := preload("res://Level13.tscn") # blank regular stage (300 wide)
 const LEVEL14_SCENE := preload("res://Level14.tscn") # blank OVERGROUND stage (30 wide)
 const LEVEL15_SCENE := preload("res://Level15.tscn") # single-screen DONKEY KONG arena
+const LEVEL16_SCENE := preload("res://Level16.tscn") # 3-3: "eerily too easy" overworld
+const LEVEL17_SCENE := preload("res://Level17.tscn") # 3-4: the FINAL LEVEL (blank starter)
 const SOURCE_ID := 0
 
 # =========================================================================
@@ -136,6 +138,8 @@ const LEVEL_ORDER := [
 	[13, "2-3"],     # 13th — Level13.tscn: World 2-3, comes after 2-2, leads to 2-4 (debug key BACKSPACE)
 	[14, "2-2"],     # 14th — Level14.tscn: the 2nd Sonic cutscene, the TAIL of 2-2 (pipe warp target), shown as "2-2" (debug key \)
 	[15, "2-4"],     # 15th — Level15.tscn: the DONKEY KONG stage, labelled 2-4 (debug key ])
+	[16, "3-3"],     # 16th — Level16.tscn: the "eerily too easy" overworld (debug key [)
+	[17, "3-4"],     # 17th — Level17.tscn: the FINAL LEVEL (debug key ')
 ]
 # per-FILE geometry (intrinsic to each level's layout, keyed by scene file #):
 #   lw = width in tiles, flag/castle = flagpole & castle columns, dark = black bg,
@@ -156,6 +160,8 @@ const LEVEL_GEOMETRY := {
 	13: {"lw": 300, "flag": 292, "castle": 295, "dark": false, "under": false, "noflag": true},  # blank regular stage (300 wide)
 	14: {"lw": 30,  "flag": 26,  "castle": 28,  "dark": false, "under": false, "noflag": true},  # blank OVERGROUND stage (30 wide)
 	15: {"lw": 302, "flag": 259, "castle": 262, "dark": true,  "under": false, "noflag": true, "cas": true},  # DONKEY KONG stage: 1-4 castle theme; climb to DK + axe (drops him in lava) → Amazon reveal down the corridor past the axe (lw covers the corridor)
+	16: {"lw": 168, "flag": 160, "castle": 163, "dark": false, "under": false},  # 3-3: eerily-easy overworld, flagpole finish → advances to 3-4
+	17: {"lw": 220, "flag": 212, "castle": 215, "dark": false, "under": false},  # 3-4: the final level (blank overworld starter, edit in Godot)
 }
 # After completing certain FILES, jump to a specific PLAY-SLOT instead of the next one in order.
 #   file 9 = EXTRA 1, the BIG-pipe warp tail of 1-2 that ends at a flagpole = 1-2's real finish
@@ -167,7 +173,9 @@ const LEVEL_GEOMETRY := {
 #            false path that restarts 2-2 via _l14_goto_next.
 #   file 13 = 2-3 (play-slot 13) → 2-4 = the DK stage (play-slot 15).
 #   file 15 = 2-4, the DK stage → 3-1 (play-slot 8).
-const ADVANCE_TO_SLOT := { 9: 3, 2: 6, 12: 13, 14: 13, 13: 15, 15: 8, 3: 5 }   # 3-1 (file 3) -> 3-2 (slot 5)
+#   file 5 = 3-2 -> 3-3 (play-slot 16, the eerily-easy overworld).
+#   file 16 = 3-3 -> 3-4 (play-slot 17, the final level).
+const ADVANCE_TO_SLOT := { 9: 3, 2: 6, 12: 13, 14: 13, 13: 15, 15: 8, 3: 5, 5: 16, 16: 17 }   # 3-1->3-2->3-3->3-4
 var _advance_next := 0          # play-slot the current advance is heading to
 var _level_file := 1            # which LevelN.tscn is currently loaded
 var level                       # Level1.tscn instance (TileMapLayer + markers)
@@ -221,7 +229,7 @@ var timing := true             # false once the flagpole is touched (freezes ela
 var game_state := "play"        # play | clear
 var saved_tier := "small"       # power tier Mario STARTS the next level as (carries over; death -> small)
 var level_num := 1              # 1 = world 1-1, 2 = world 1-2
-const LEVEL_COUNT := 15         # number of levels in LEVEL_ORDER (debug stage select; 10=key 0, 11=key -, 12=key =, 13=key Backspace, 14=key \, 15=key ])
+const LEVEL_COUNT := 17         # number of levels in LEVEL_ORDER (debug stage select; 10=key 0, 11=key -, 12=key =, 13=key Backspace, 14=key \, 15=key ], 16=key [, 17=key ')
 static var debug_start_level := 1   # DEBUG: level the intro's stage-select boots into
 var world_label := "1-1"        # shown in the HUD
 var underground := false         # true = black bg, no starfield (1-4 is underground)
@@ -286,7 +294,78 @@ var _intro_moonwalk := false     # true for 1-7 (Level12): Mario MOONWALKS into 
 var _intro_32 := false           # true for 3-2 (Level5): its own cloned copy of the 1-2 surface intro
 var _intro_sonic := false        # 3-2 intro: draw Sonic (he jumps in onto the pipe after Mario enters)
 var _intro_sonic_landed := false # 3-2 intro: Sonic has landed on the pipe and is foot-tapping
+var _intro_oneup: AudioStreamPlayer = null  # 3-2 intro: the 1-up jingle (played AFTER the SEGA sound finishes)
+var _intro_oneup_started := false           # 3-2 intro: 1-up jingle has been kicked off
+var _intro_tap_t := 0.0                      # 3-2 intro: seconds Sonic has spent foot-tapping (starts after the 1-up ends)
 const INTRO_SONIC_TAP_TIME := 3.0  # seconds Sonic foot-taps on the pipe before the level drops in
+
+# --- 3-4 (Level17) BOSS-ARENA INTRO CUTSCENE ---
+# Mario auto-walks in from the left edge; the screen locks; then a wall of purple blocks
+# crashes down (plus a gordo). The WALL POSITION IS DATA-DRIVEN: the user paints ? blocks
+# (atlas 2) where the wall should land and a pipe tile (atlas 8-11) where a gordo drops —
+# at cutscene start those markers are removed (opening the way), and on the trigger purple
+# blocks + the gordo fall onto exactly those cells. Re-edit the level and it just adapts.
+const ATLAS_ARENA_WALL := 16                       # the purple block the 3-4 arena is built from
+var _arena_phase := 0                              # 0 walk-in, 1 drop the wall, 2 wait for it to land, 3 done
+var _arena_sealed := false                         # wall has been triggered (one-shot); cleared in reset()
+const ARENA_WALK_SPD := 92.0                       # cutscene walk-in speed (px/s)
+var _arena_wall_cells: Array = []                  # cells the wall fills (detected from the ? markers)
+var _arena_gordo_cells: Array = []                 # cells a gordo drops onto (detected from the pipe markers)
+var _arena_trap_x := 0.0                           # Mario past this (right of the wall) drops it — computed at arm
+var _arena_stop_x := 0.0                           # where Mario halts, just right of the wall — computed at arm
+var _arena_cam_lock_x := 0.0                       # screen locks here, framing the wall — computed at arm
+const SEAL_DROP := 12.0 * TILE                     # blocks start this far above their slot — a big, tall fall
+const SEAL_G := 1150.0                             # falling-block gravity
+var _seal_blocks: Array = []                       # things in flight: [{kind, node, vy, target_y, cell}]
+var _cam_shake := 0.0                              # decaying screen-shake magnitude (px)
+# Sonic boss entrance: after the wall lands he crashes in through the right wall (one row
+# above the right gordo), the smashed blocks fall back, and he stops face-to-face with Mario.
+var _arena_sonic := false                          # Sonic is on-stage (draw + drive him)
+var _arena_broken: Array = []                      # cells Sonic smashed through (they fall back)
+var _arena_fellback := false                       # the smashed blocks have been sent falling back
+var _arena_crash_row := 11                         # the row Sonic tunnels through (one above the right gordo)
+var _arena_sonic_stop_x := 0.0                     # where Sonic halts, just right of Mario
+var _arena_crash_start_x := 0.0                    # off-screen right, PAST the right wall (so he breaks through it)
+var _arena_crash_break_from := 999                 # only smash cells at/right of this col (the right wall)
+const SONIC_CRASH_SPD := 250.0                     # Sonic's dash-in speed (px/s)
+const ARENA_FACEOFF_GAP := 5 * TILE                # tiles between Mario and Sonic at the standoff (fits on-screen with Mario centred)
+const SONIC_DROP_SPD := 260.0                      # Sonic settling from the crash height to the floor
+var _arena_t := 0.0                                # timer for the standoff hold before the fight
+# THE BOSS FIGHT: Sonic spin-dashes at Mario; Mario jumps over; Sonic smashes a gordo (self-hit,
+# gordo removed); 4 gordos gone -> Sonic death. Runs inside game_state "play" with `_boss_active`.
+var _boss_active := false
+var _boss_dead := false
+var _boss_phase := "pursue"                        # pursue -> rev -> dash -> recoil (loop) ; then death
+var _boss_t := 0.0
+var _boss_dash_dir := -1
+var _boss_descend_dir := 0                          # locked step-off direction while dropping off a ledge (0 = not descending)
+var _boss_descend_from_row := 0                     # the row Sonic stepped off from (keep pushing until he lands lower)
+var _boss_dash_from := 0.0                          # sonic_x where the current spin-dash began (capped at BOSS_DASH_MAX)
+var _boss_hits := 0                                # gordos smashed (4 = defeat)
+var _boss_lo := 0.0                                # left/right dash limits
+var _boss_hi := 0.0
+var _boss_cam_lo := 0.0                            # camera bounds: 1 tile out from the gordos each side
+var _boss_cam_hi := 0.0
+var _boss_vx := 0.0                                # Sonic's velocity (he walks/runs/jumps with real physics)
+var _boss_vy := 0.0
+var _boss_feet_y := 0.0                            # Sonic's feet world-y (he stands on floor/platforms)
+var _boss_grounded := true
+const BOSS_WALK_SPD := 58.0
+const BOSS_RUN_SPD := 104.0                        # runs when Mario is far
+const BOSS_GRAV := 720.0
+const BOSS_JUMP_V := -335.0                        # ~4.7-tile hop (Mario-sized) so he climbs step platforms, not overshoots
+const BOSS_REV_TIME := 0.85                        # rev-up telegraph before a spin-dash (longer = fairer tell)
+const BOSS_DASH_SPD := 285.0                       # spin-dash speed
+const BOSS_DASH_RANGE := 12 * TILE                 # walks to Mario until ~12 tiles away, THEN spin-dashes (matches the roll cap so a dash can still reach him)
+const BOSS_DASH_MAX := 12 * TILE                   # a spin-dash travels at most 12 tiles before he stops (harder to bait into a distant gordo)
+const BOSS_RECOIL_TIME := 0.7
+const BOSS_RECOIL_SPD := 130.0                     # px/s he reels backward after smashing a gordo (~5-6 tiles over the recoil)
+const BOSS_DEATH_TIME := 2.2
+# --- Sonic's stepping-stone climb brain (auto-derived from the arena geometry) ---
+var _boss_platforms: Array = []                    # standable segments {row,c0,c1} above the floor, for laddering up
+var _boss_step = null                              # the rung Sonic is currently hopping to (locked until he lands)
+const BOSS_CLIMB_RISE := 4                          # max tiles a single hop can gain (jump clears ~4.7t)
+const BOSS_LAUNCH_WINDOW := 1.6 * TILE             # hop onto a rung once its near edge is this close horizontally
 var intro_phase := 0             # 0 walk to pipe, 1 enter (fade), 2 fade to black
 var intro_t := 0.0
 const INTRO_CASTLE_X := -12.0    # castle sprite left (its door ~x28)
@@ -315,6 +394,36 @@ var _want_emerge := false
 var emerge_target_y := 0.0       # feet stop here (the pipe rim)
 const EMERGE_SPEED := 26.0       # px/s slow rise
 
+# END CREDITS (after the 3-4 Sonic boss): COURSE CLEAR holds a beat, fades to black, then a
+# separate overworld cutscene rolls — Mario runs along two rows of ground while the credits
+# scroll up. A mock-up finale, self-contained (drawn by the HUD, no level scene needed).
+var _boss_finale := false        # the 3-4 boss was beaten → run the finale after COURSE CLEAR
+var _finale_t := 0.0             # timer for the hold → fade-out before credits
+var credits_t := 0.0             # seconds the credits roll has been running
+var _credits_ground_x := 0.0     # 0..TILE scroll offset for the ground (the running illusion)
+var credits_mario_frame := 0.0   # Mario's leg-cycle accumulator
+const FINALE_HOLD := 3.0         # seconds COURSE CLEAR stays up before the fade
+const FINALE_FADE := 1.2         # seconds to fade to black, then credits begin
+const CREDITS_SCROLL_SPD := 20.0 # px/s the credit lines crawl upward
+const CREDITS_LINE_H := 22.0     # vertical spacing between lines
+const CREDITS_START_Y := 168.0   # y the first line enters at (just above Mario's lane)
+const CREDITS_REST_Y := 84.0     # y the final line ("THE END") settles at
+var credits_done := false        # the roll has finished — Mario stops; any button restarts
+# Each entry: [text, scale, [r,g,b]]. Blank strings are spacer rows. Font is A-Z/0-9/.!:- only.
+const CREDITS_LINES := [
+	["GOOSE PRANDINI MEDIA", 2.0, [1.0, 0.82, 0.30]],
+	["", 1.0, [1,1,1]], ["", 1.0, [1,1,1]],
+	["CREATED BY", 1.0, [0.8, 0.85, 1.0]],
+	["KENNETH ALIPRANDINI", 2.0, [1.0, 1.0, 1.0]],
+	["", 1.0, [1,1,1]], ["", 1.0, [1,1,1]],
+	["THANKS FOR PLAYING.", 1.0, [0.8, 0.85, 1.0]],
+	["", 1.0, [1,1,1]], ["", 1.0, [1,1,1]],
+	["THE END", 2.0, [1.0, 0.82, 0.30]],
+]
+
+func _credits_scroll_max() -> float:
+	return CREDITS_START_Y + float(CREDITS_LINES.size() - 1) * CREDITS_LINE_H - CREDITS_REST_Y
+
 # REWARD TRAP (Level11): Mario drops OUT of the upside-down ceiling pipe (flipped-lip tiles)
 # then falls straight down into the lava below and dies — Sonic's "reward" is a death trap.
 var _want_reward_trap := false
@@ -327,6 +436,7 @@ const TRAP_EMERGE_SPEED := 34.0  # px/s slow slide out of the pipe mouth
 const TRAP_FALL_G := 640.0       # gravity once he's clear and plummeting
 const TRAP_TAUNT_TIME := 4.2     # how long Sonic's taunt holds before 1-2 restarts
 const SONIC_TAUNT_SPEECH := ["HA HA HA!", "YOU LOSER!!", "THERE ARE NO", "SHORTCUTS"]
+const SONIC_BOSS_SPEECH := ["WE MEET AGAIN", "FOR THE LAST TIME!!", "YOU WILL PERISH!"]  # 3-4 standoff
 const L14_TAUNT := ["HA HA HA!", "WHAT A JERK!"]   # Level 14: Sonic's taunt after the trap kills Mario
 const L14_PRIZE := ["HERE'S YOUR", "PRIZE, PAL!"]  # Level 14: Sonic's line just before he jumps at the block
 const L14_PRIZE_HOLD := 2.0                        # seconds the prize line shows before he jumps
@@ -446,7 +556,10 @@ var overworld_music: AudioStream    # default overground song
 var intro_music: AudioStream        # beat.wav — plays during the surface intro cutscene (1-2 / 1-7)
 var underground_music: AudioStream  # under.mp3 — levels with "under": true (1-2 etc.)
 var castle_music: AudioStream       # cas.mp3 — levels with "cas": true (1-4 Bowser castle)
+var boss_music: AudioStream         # boss.mp3 — the 3-4 Sonic boss stage
 var fanfare_player: AudioStreamPlayer
+var victory_player: AudioStreamPlayer    # victory.mp3 — plays when Sonic is defeated (3-4)
+var end_player: AudioStreamPlayer        # "end m.mp3" — the song over the end credits
 var mac_player: AudioStreamPlayer        # the "mac" ending song (1-4 rescue), replaces the fanfare
 var am_player: AudioStreamPlayer         # amam.wav — plays when Amazon raises his arms (2-4 ending)
 var sonic_song_player: AudioStreamPlayer  # sonic.mp3 — the gloat song when the Level11 trap kills Mario
@@ -540,6 +653,11 @@ func _physics_process(delta: float) -> void:
 	if _level_file == 14:
 		_update_l14_audio()
 	if game_state == "clear":
+		# 3-4 finale: after COURSE CLEAR, hold, fade to black, then roll the end credits
+		if _boss_finale:
+			_update_finale(delta)
+			hud.refresh()
+			return
 		# level beaten — keep the HUD live, but let the flag finish dropping even
 		# after Mario has entered the castle (it was freezing mid-slide otherwise)
 		_update_flag_slide(delta)
@@ -547,6 +665,11 @@ func _physics_process(delta: float) -> void:
 			_update_advance(delta)
 		if show_rescue:
 			_update_rescue(delta)
+		hud.refresh()
+		return
+	# 3-4 end credits: the overworld run-and-scroll finale (drawn entirely by the HUD)
+	if game_state == "credits":
+		_update_credits(delta)
 		hud.refresh()
 		return
 	# Bowser's-castle rescue: Mario walks to mac, mac speaks — all before COURSE CLEAR.
@@ -558,6 +681,15 @@ func _physics_process(delta: float) -> void:
 	# 1-2 surface intro: Mario strolls out of the castle into the pipe (main drives him)
 	if game_state == "intro":
 		_update_intro12(delta)
+		hud.refresh()
+		return
+	# 3-4 boss-arena intro: Mario walks in, screen locks, a big block wall crashes down
+	if game_state == "arena_intro":
+		_update_arena_intro(delta)
+		_update_particles(delta)
+		_update_camera()
+		bg_renderer.queue_redraw()
+		fg_renderer.queue_redraw()
 		hud.refresh()
 		return
 	# 1-2 exit: Mario slips into the giant end pipe, then warps to EXTRA 1
@@ -620,6 +752,7 @@ func _physics_process(delta: float) -> void:
 	_update_enemy_fireballs()
 	_update_bowsers()
 	_update_dk()
+	_update_boss(delta)
 	_update_barrel_spawners(delta)
 	_update_gords()
 	_update_castle_fire(delta)
@@ -654,6 +787,8 @@ func _scene_for_file(f: int) -> PackedScene:
 		13: return LEVEL13_SCENE
 		14: return LEVEL14_SCENE
 		15: return LEVEL15_SCENE
+		16: return LEVEL16_SCENE
+		17: return LEVEL17_SCENE
 		_: return LEVEL_SCENE
 
 func _instance_level() -> void:
@@ -896,6 +1031,14 @@ func reset(preserve_progress := true) -> void:
 	_l14_audio = 0                # don't let the gloat song carry over into a fresh Level 14
 	_l14_walk_in = false
 	_l14_prejump = false
+	# 3-4 boss-arena intro: re-arm (fresh level = open wall) and clear any blocks in flight
+	_arena_sealed = false
+	_arena_phase = 0
+	_arena_sonic = false
+	_arena_fellback = false
+	_arena_broken.clear()
+	_cam_shake = 0.0
+	_clear_seal_blocks()
 	_sonic_pipe_cell = _find_chamber_pipe() if _level_file == 4 else Vector2i(-1, -1)
 	# trigger fires when Mario crosses onto the chamber roof (~18 tiles left of the pipe)
 	_sonic_trigger_x = float((_sonic_pipe_cell.x - 18) * TILE) if _sonic_pipe_cell.x >= 0 else 0.0
@@ -1046,6 +1189,7 @@ func reset(preserve_progress := true) -> void:
 	_maybe_start_reward_trap()  # Level11 only: drop out of the ceiling pipe into the lava
 	_maybe_start_sonic_demo()  # Level10 only: hide Mario, run the Sonic preview
 	_maybe_start_dk()          # Level15 only: Donkey Kong on his ledge hurling barrels
+	_maybe_start_arena_intro() # Level17 only: walk-in cutscene + the sealing block wall
 
 func _spawn_enemies() -> void:
 	# placed barrel emitters (Level 15): each starts spitting barrels on its own staggered timer
@@ -1834,10 +1978,22 @@ func _update_flag_slide(delta: float) -> void:
 		flag_sliding = false
 
 func _update_camera() -> void:
+	# 3-4 intro cutscene drives its own camera (follows Mario in, then Sonic's crash, then the standoff)
+	if game_state == "arena_intro":
+		camera.position = Vector2(roundf(cam_x) + VIEW_W / 2.0, VIEW_H / 2.0)
+		return
 	# Level 14 ONLY: the camera follows Mario in BOTH directions — he can backtrack and it
 	# scrolls left with him (no SMB1 one-way scroll, no left wall).
 	if _level_file == 14:
 		cam_x = clampf(player.global_position.x - VIEW_W * 0.42, 0.0, float(LW * TILE - VIEW_W))
+		camera.position = Vector2(roundf(cam_x) + VIEW_W / 2.0, VIEW_H / 2.0)
+		return
+	# 3-4 boss fight: follow Mario BOTH ways (centred), EASED so it slides smoothly out of the
+	# standoff framing at the start (and trails him gently) instead of snapping.
+	if _boss_active:
+		# follow Mario but never scroll past 1 tile outside the gordos on either side
+		var target: float = clampf(player.global_position.x - VIEW_W / 2.0, _boss_cam_lo, _boss_cam_hi)
+		cam_x = lerp(cam_x, target, clampf(10.0 * get_physics_process_delta_time(), 0.0, 1.0))
 		camera.position = Vector2(roundf(cam_x) + VIEW_W / 2.0, VIEW_H / 2.0)
 		return
 	var target: float = player.global_position.x - VIEW_W * 0.42
@@ -1851,7 +2007,10 @@ func _update_camera() -> void:
 	# but a sub-pixel camera makes static tiles rasterize to 15/16px depending on
 	# scroll (the block appears to change size as you walk); a pixel-snapped camera
 	# renders integer-positioned world tiles identically every frame.
-	camera.position = Vector2(roundf(cam_x) + VIEW_W / 2.0, VIEW_H / 2.0)
+	var shake := Vector2.ZERO
+	if _cam_shake > 0.05:
+		shake = Vector2(randf_range(-_cam_shake, _cam_shake), randf_range(-_cam_shake, _cam_shake))
+	camera.position = Vector2(roundf(cam_x) + VIEW_W / 2.0 + shake.x, VIEW_H / 2.0 + shake.y)
 	# one-way left wall at the camera edge
 	var min_x: float = cam_x + player.half_w()
 	if player.global_position.x < min_x:
@@ -2168,6 +2327,9 @@ func _maybe_start_intro12() -> void:
 	_intro_32 = (_level_file == 5)          # 3-2 (Level5): its own cloned 1-2-style intro
 	_intro_sonic = false
 	_intro_sonic_landed = false
+	_intro_oneup = null
+	_intro_oneup_started = false
+	_intro_tap_t = 0.0
 	intro_phase = 0
 	intro_t = 0.0
 	game_state = "intro"
@@ -2248,13 +2410,25 @@ func _update_intro12(delta: float) -> void:
 				sonic_x = land_x
 				sonic_jump_off = top_off
 				intro_t = 0.0
-				sonic_state_t = IDLE_STAND_TIME + 2.0 * IDLE_LEAD   # skip the idle-stand so he foot-taps right away
-				sfx("one_up")               # 1-up as he sticks the landing
+				sonic_state_t = 0.0         # land on a neutral stand (no tapping / no sound yet)
 		else:
 			sonic_state = "wait"; sonic_x = land_x; sonic_jump_off = top_off
-			sonic_state_t += delta
-			_sonic_compute_frame()          # foot-tap idle
-			if intro_t >= INTRO_SONIC_TAP_TIME:
+			if not _intro_oneup_started:
+				# hold a neutral stand until the SEGA sound finishes, THEN play the 1-up jingle
+				# (so the two never overlap)
+				sonic_state_t = 0.0
+				if not sega_player.playing:
+					_intro_oneup = sfx("one_up")
+					_intro_oneup_started = true
+			elif _intro_oneup != null and is_instance_valid(_intro_oneup) and _intro_oneup.playing:
+				# 1-up jingle still playing — keep standing, don't start tapping over it
+				sonic_state_t = 0.0
+			else:
+				# 1-up has finished — NOW Sonic foot-taps
+				sonic_state_t = IDLE_STAND_TIME + 2.0 * IDLE_LEAD + _intro_tap_t
+				_intro_tap_t += delta
+			_sonic_compute_frame()          # neutral stand, then foot-tap idle
+			if _intro_tap_t >= INTRO_SONIC_TAP_TIME:
 				intro_phase = 2
 				intro_t = 0.0
 	elif intro_phase == 2:
@@ -2292,6 +2466,626 @@ func _begin_underground() -> void:
 
 
 
+
+# 3-4 boss arena: arm the walk-in cutscene (Mario starts at the left edge, frozen).
+# Detect the user's markers — ? blocks (atlas 2) = where the wall lands, pipe tiles
+# (atlas 8-11) = where a gordo drops — and clear them so the way in is open.
+func _maybe_start_arena_intro() -> void:
+	if _level_file != 17:
+		return
+	game_state = "arena_intro"
+	_arena_phase = 0
+	_arena_sealed = false
+	_cam_shake = 0.0
+	_clear_seal_blocks()
+	_arena_sonic = true          # Sonic is already IN the arena, standing; he'll walk over after the wall drops
+	_arena_fellback = false
+	_arena_broken.clear()
+	_arena_t = 0.0
+	_boss_active = false
+	_boss_dead = false
+	_boss_hits = 0
+	_arena_wall_cells.clear()
+	_arena_gordo_cells.clear()
+	var minc := 1 << 30
+	var maxc := -(1 << 30)
+	if terrain:
+		for cell in terrain.get_used_cells():
+			var a: int = terrain.get_cell_atlas_coords(cell).x
+			if a == ATLAS_QUESTION:                       # the wall markers (invisible placeholders)
+				_arena_wall_cells.append(cell)
+				terrain.set_cell(cell)                    # open it up
+				qblock_cells.erase(cell)                  # and stop the pulsing ? overlay from drawing it
+				minc = mini(minc, cell.x); maxc = maxi(maxc, cell.x)
+			elif a >= 8 and a <= 11:                      # pipe = gordo-drop marker
+				_arena_gordo_cells.append(cell)
+				terrain.set_cell(cell)
+				minc = mini(minc, cell.x); maxc = maxi(maxc, cell.x)
+	# Mario stops (and the wall drops behind him) just past the sealed doorway — keyed off the
+	# wall itself so it stays tight no matter how the arena platforms are edited.
+	_arena_stop_x = float((maxc + 3) * TILE) if maxc > -(1 << 30) else 35.0 * TILE
+	_arena_trap_x = _arena_stop_x
+	# Sonic crashes in through the right wall, one row above the RIGHT gordo (rightmost/lowest one)
+	var rg := Vector2(-1e9, -1e9)
+	for g in gords:
+		var p: Vector2 = g.global_position
+		if p.x > rg.x + 0.5 or (absf(p.x - rg.x) < 8.0 and p.y > rg.y):
+			rg = p
+	_arena_crash_row = (int(rg.y / TILE) - 2) if rg.x > -1e8 else 10
+	_arena_sonic_stop_x = _arena_stop_x + ARENA_FACEOFF_GAP    # initial standoff (recomputed after Mario's walk-right)
+	# he must START past the RIGHT wall so he actually smashes through it — scan the wall's right edge
+	_arena_crash_break_from = int(rg.x / TILE) if rg.x > -1e8 else 47   # the right wall's left edge (right gordo col)
+	var wcol := _arena_crash_break_from
+	while wcol < LW - 1 and _boss_solid(wcol + 1, _arena_crash_row):
+		wcol += 1
+	_arena_crash_start_x = float((wcol + 3) * TILE)
+	# the screen locks CENTRED between Mario and Sonic (nudged 2 tiles right so more of the arena shows)
+	_arena_cam_lock_x = clampf((_arena_stop_x + _arena_sonic_stop_x) / 2.0 - VIEW_W / 2.0 + 2.0 * TILE, 0.0, float(LW * TILE - VIEW_W))
+	start_delay = 0.0            # no "get ready" freeze — the cutscene drives him straight in
+	fade_alpha = 0.0            # lift the black fade-in (the cutscene returns before the normal fade update)
+	player.facing = 1
+	player.grounded = true
+	# Sonic is already standing in the arena (a few tiles right of the standoff); he walks over later
+	sonic_x = _arena_sonic_stop_x + 9.0 * TILE
+	sonic_jump_off = 0.0
+	sonic_state = "wait"; sonic_face = "l"; sonic_state_t = 0.0
+
+# the cutscene: walk right -> lock the screen -> drop the wall -> hand back control
+func _update_arena_intro(delta: float) -> void:
+	if _arena_phase == 0:
+		# march Mario right across the floor, walk animation playing
+		player.global_position.x += ARENA_WALK_SPD * delta
+		player.velocity.x = ARENA_WALK_SPD
+		player.facing = 1
+		player.walk_anim += delta * 8.0
+		player._animate()
+		if player.global_position.x >= _arena_trap_x:
+			_arena_phase = 1
+	elif _arena_phase == 1:
+		# he's at his mark: the wall (and a gordo) crash down behind him
+		player.velocity.x = 0.0
+		player._animate()
+		_drop_arena_wall()
+		_arena_phase = 2
+	elif _arena_phase == 2:
+		# wait for the wall to slam home, THEN hold a 1-second beat before Mario reacts
+		_update_arena_seal(delta)
+		if _seal_blocks.is_empty():
+			_arena_t += delta
+			if _arena_t >= 1.0:
+				_arena_phase = 3; _arena_t = 0.0
+		else:
+			_arena_t = 0.0
+	elif _arena_phase == 3:
+		# TRAPPED: Mario looks LEFT at the sealed wall for one second
+		player.facing = -1
+		player.velocity.x = 0.0
+		player._animate()
+		_arena_t += delta
+		if _arena_t >= 1.0:
+			_arena_phase = 4; _arena_t = 0.0
+	elif _arena_phase == 4:
+		# then he turns to face RIGHT and WALKS right for 2 seconds (into the arena)
+		player.facing = 1
+		player.grounded = true
+		player.velocity.x = 55.0                  # needed so _animate() plays the WALK cycle (not a glide)
+		player.global_position.x += 55.0 * delta
+		player.walk_anim += delta * 8.0
+		player._animate()
+		_arena_t += delta
+		if _arena_t >= 2.0:
+			# Sonic will square off a gap to Mario's right, camera re-centred on the pair
+			_arena_sonic_stop_x = player.global_position.x + ARENA_FACEOFF_GAP
+			_arena_cam_lock_x = clampf((player.global_position.x + _arena_sonic_stop_x) / 2.0 - VIEW_W / 2.0 + 2.0 * TILE, 0.0, float(LW * TILE - VIEW_W))
+			_arena_phase = 5; _arena_t = 0.0
+	elif _arena_phase == 5:
+		# SONIC WALKS OVER: he's already in the arena, so he just strolls up to Mario (no crash)
+		player.facing = 1                       # Mario faces him, standing neutral (not mid-stride)
+		player.velocity.x = 0.0
+		player.walk_anim = 0.0
+		player._animate()
+		sonic_jump_off = 0.0
+		sonic_x = move_toward(sonic_x, _arena_sonic_stop_x, BOSS_WALK_SPD * delta)
+		sonic_face = "l"
+		sonic_state = "walk"; sonic_frame_t += delta
+		_sonic_compute_frame()
+		if is_equal_approx(sonic_x, _arena_sonic_stop_x):
+			_arena_phase = 7; _arena_t = 0.0
+	else:
+		# FACE TO FACE: Sonic stands still and taunts Mario; after a beat, the fight begins
+		sonic_state = "wait"; sonic_face = "l"; sonic_x = _arena_sonic_stop_x; sonic_jump_off = 0.0
+		sonic_state_t = 0.0                    # pin the neutral stand frame (no idle foot-tap)
+		player.facing = 1
+		player.velocity.x = 0.0; player.walk_anim = 0.0; player._animate()   # Mario stands neutral, facing Sonic
+		sonic_speech = true
+		sonic_speech_lines = SONIC_BOSS_SPEECH
+		_sonic_compute_frame()
+		_arena_t += delta
+		if _arena_t >= 2.8:
+			_start_boss()
+	# --- intro camera: track Mario 1:1 the WHOLE cutscene, so the screen only moves as he moves
+	# (no separate standoff pan / shift). Stays put while he's still.
+	cam_x = clampf(player.global_position.x - VIEW_W / 2.0, 0.0, float(LW * TILE - VIEW_W))
+
+# drop the purple-block wall onto the ? cells, plus a gordo onto each pipe cell
+func _drop_arena_wall() -> void:
+	_arena_sealed = true
+	sfx("bump")
+	_drop_blocks(_arena_wall_cells)
+	# a gordo drops in at each pipe marker
+	for cell in _arena_gordo_cells:
+		var target_yc := float(cell.y * TILE + TILE / 2.0)  # gord is centre-anchored
+		var g = Gord.new()
+		g.main = self
+		add_child(g)
+		g.spawn(Vector2(float(cell.x * TILE + TILE / 2.0), target_yc - SEAL_DROP))
+		gords.append(g)
+		_seal_blocks.append({"kind": "gord", "node": g, "vy": 0.0, "target_y": target_yc, "cell": cell})
+
+# spawn a falling purple block onto every given empty cell (used for the wall + the fall-back)
+func _drop_blocks(cells: Array) -> void:
+	var src := terrain.tile_set.get_source(SOURCE_ID) as TileSetAtlasSource
+	var tex: Texture2D = src.texture if src else null
+	for cell in cells:
+		if terrain.get_cell_source_id(cell) != -1:
+			continue                                       # already solid (skip)
+		var target_y := float(cell.y * TILE)
+		var spr := Sprite2D.new()
+		if tex:
+			spr.texture = tex
+			spr.region_enabled = true
+			spr.region_rect = Rect2(ATLAS_ARENA_WALL * TILE, 0, TILE, TILE)
+		spr.centered = false
+		spr.position = Vector2(float(cell.x * TILE), target_y - SEAL_DROP - cell.x * 4.0)  # start high, staggered
+		spr.z_index = 2
+		add_child(spr)
+		_seal_blocks.append({"kind": "block", "node": spr, "vy": 0.0, "target_y": target_y, "cell": cell})
+
+# Sonic smashing through the right wall: erase the solid cells at his crash rows as he passes.
+# Only breaks the RIGHT WALL (cols >= the right gordo) — leaves the arena's mid platforms intact.
+func _arena_break_walls() -> void:
+	var col := int(floor(sonic_x / TILE))
+	if col < _arena_crash_break_from:
+		return
+	var broke := false
+	for c in [col, col + 1]:
+		if c < _arena_crash_break_from:
+			continue
+		for r in [_arena_crash_row, _arena_crash_row - 1]:   # a 2-tall tunnel
+			var cell := Vector2i(c, r)
+			if terrain.get_cell_source_id(cell) != -1 and not _arena_broken.has(cell):
+				terrain.erase_cell(cell)
+				_spawn_debris(c, r, true)                    # purple shards fly as he smashes through
+				_arena_broken.append(cell)
+				broke = true
+	if broke:
+		sfx("brick")
+
+# ---- THE SONIC BOSS FIGHT ----
+func _start_boss() -> void:
+	game_state = "play"          # Mario is controllable now
+	sonic_speech = false
+	_boss_active = true
+	_boss_dead = false
+	_boss_phase = "rev"
+	_boss_t = 0.0
+	_boss_hits = 0
+	# dash limits = the arena walls, taken from where the gordos sit (± a bit)
+	_boss_lo = 1e9; _boss_hi = -1e9
+	for g in gords:
+		_boss_lo = minf(_boss_lo, g.global_position.x)
+		_boss_hi = maxf(_boss_hi, g.global_position.x)
+	# camera bounds: the view stops ONE TILE left of the left gordos and one tile right of the right
+	_boss_cam_lo = (floor(_boss_lo / TILE) - 1.0) * TILE
+	_boss_cam_hi = (floor(_boss_hi / TILE) + 2.0) * TILE - float(VIEW_W)
+	if _boss_cam_hi < _boss_cam_lo:
+		_boss_cam_hi = _boss_cam_lo                       # tiny arena fallback
+	_boss_lo += 6.0        # dash limits: stop just short of the gordo so the smash reads at the wall
+	_boss_hi -= 6.0
+	_boss_feet_y = float(FLOOR * TILE)
+	_boss_vy = 0.0
+	_boss_grounded = true
+	_boss_build_platforms()
+	_boss_step = null
+	sonic_state = "wait"; sonic_jump_off = 0.0
+
+# true if no live gordo sits BETWEEN Sonic and Mario at Sonic's level — so a dash won't
+# smack a gordo before reaching Mario (Sonic only self-hits a gordo the player baited BEYOND Mario)
+func _boss_path_clear_to_mario() -> bool:
+	var lo: float = minf(sonic_x, player.global_position.x)
+	var hi: float = maxf(sonic_x, player.global_position.x)
+	for g in gords:
+		if g.dead:
+			continue
+		var gx: float = g.global_position.x
+		if gx > lo + 4.0 and gx < hi - 4.0 and absf(g.global_position.y - _boss_feet_y) < 1.5 * TILE:
+			return false
+	return true
+
+# true if the column above Sonic is open for `height` tiles — so a hop here rises (up a gap /
+# beside a step) instead of bonking a platform underside right away
+func _boss_clear_above(col: int, feet_row: int, height: int) -> bool:
+	for r in range(feet_row - 1, feet_row - 1 - height, -1):
+		if _boss_solid(col, r):
+			return false
+	return true
+
+# is this tile solid ground Sonic can stand on?
+func _boss_solid(col: int, row: int) -> bool:
+	if row < 0 or row > 14 or terrain == null:
+		return false
+	if terrain.get_cell_source_id(Vector2i(col, row)) < 0:
+		return false
+	var ax: int = terrain.get_cell_atlas_coords(Vector2i(col, row)).x
+	return ax != ATLAS_LAVA_TOP and ax != ATLAS_LAVA
+
+# Scan the arena for every standable surface (a solid tile with open space above it) ABOVE the
+# floor — the stepping stones/ledges Sonic ladders up. Auto-derives from geometry so it survives
+# the user's edits. Stored as horizontal runs {row, c0, c1}.
+func _boss_build_platforms() -> void:
+	_boss_platforms.clear()
+	if terrain == null:
+		return
+	var c_lo: int = int(floor(_boss_cam_lo / TILE)) - 2
+	var c_hi: int = int(floor((_boss_cam_hi + float(VIEW_W)) / TILE)) + 2
+	for row in range(1, FLOOR):                        # above the floor only (FLOOR is Sonic's base)
+		var run_start: int = -9999
+		for col in range(c_lo, c_hi + 1):
+			var standable: bool = _boss_solid(col, row) and not _boss_solid(col, row - 1)
+			if standable and run_start == -9999:
+				run_start = col
+			elif not standable and run_start != -9999:
+				_boss_platforms.append({"row": row, "c0": run_start, "c1": col - 1})
+				run_start = -9999
+		if run_start != -9999:
+			_boss_platforms.append({"row": row, "c0": run_start, "c1": c_hi})
+
+# Pick the next rung Sonic should hop to in order to climb toward Mario, or null if none.
+# Chooses the HIGHEST rung reachable in one hop from Sonic's current surface (rise <= BOSS_CLIMB_RISE)
+# that doesn't overshoot Mario's level, tie-broken toward MARIO's x so he climbs the correct side.
+func _boss_pick_step():
+	var cur_row: int = int(round(_boss_feet_y / TILE))
+	var mario_row: int = int(round(player.global_position.y / TILE))
+	var best = null
+	var best_key := Vector2(1e9, 1e9)
+	for p in _boss_platforms:
+		var prow: int = p.row
+		if prow >= cur_row:
+			continue                                   # not higher than Sonic
+		if cur_row - prow > BOSS_CLIMB_RISE:
+			continue                                   # too tall for one hop
+		if prow < mario_row - 1:
+			continue                                   # don't climb PAST Mario
+		# distance from this rung's column span to Mario's x (0 if Mario is over it)
+		var px0: float = p.c0 * TILE
+		var px1: float = (p.c1 + 1) * TILE
+		var mdist: float = 0.0
+		var mx: float = player.global_position.x
+		if mx < px0: mdist = px0 - mx
+		elif mx > px1: mdist = mx - px1
+		var key := Vector2(float(prow), mdist)         # highest rung first, then nearest Mario's side
+		if key.x < best_key.x or (key.x == best_key.x and key.y < best_key.y):
+			best_key = key
+			best = p
+	return best
+
+# The raised platform Sonic is currently standing on (feet on row `feet_row`), or null on the floor.
+func _boss_current_platform(feet_row: int):
+	for p in _boss_platforms:
+		if p.row == feet_row and sonic_x >= float(p.c0 * TILE) and sonic_x < float((p.c1 + 1) * TILE):
+			return p
+	return null
+
+# Which way to step off `plat` to drop a level: toward an edge that has AIR beside it (a real
+# drop, not a wall) and is inside his movement range. Prefers Mario's side, else the nearer edge.
+func _boss_pick_descend_dir(plat, feet_row: int, dx: float) -> int:
+	var left_col: int = plat.c0 - 1
+	var right_col: int = plat.c1 + 1
+	var left_ok: bool = not _boss_solid(left_col, feet_row) and float(plat.c0 * TILE) >= _boss_lo
+	var right_ok: bool = not _boss_solid(right_col, feet_row) and float(right_col * TILE) <= _boss_hi
+	if left_ok and right_ok:
+		if dx > 8.0: return 1
+		if dx < -8.0: return -1
+		return -1 if (sonic_x - float(plat.c0 * TILE)) <= (float((plat.c1 + 1) * TILE) - sonic_x) else 1
+	if right_ok: return 1
+	if left_ok: return -1
+	return 0
+
+func _update_boss(delta: float) -> void:
+	if not _boss_active:
+		return
+	if _boss_dead:
+		_update_boss_death(delta)
+		return
+	# --- Sonic's platforming physics (gravity + land on top of floor/platforms) ---
+	# ...he's locked to his level only while mid spin-dash
+	if _boss_phase != "dash":
+		_boss_vy = minf(_boss_vy + BOSS_GRAV * delta, 640.0)
+		_boss_feet_y += _boss_vy * delta
+		_boss_grounded = false
+		if _boss_feet_y - 30.0 < 0.0:                       # HARD CEILING — never leaves the arena
+			_boss_feet_y = 30.0
+			_boss_vy = maxf(_boss_vy, 0.0)
+		var fcol := int(floor(sonic_x / TILE))
+		# rising: BONK only on THICK structures (walls — solid tile with another solid tile above it).
+		# Pass up through THIN 1-tile platforms (a solid tile with open space above), landing on top —
+		# that's how he "jumps onto" the step platforms; he still can't phase through the solid walls.
+		if _boss_vy < 0.0:
+			var head_row := int(floor((_boss_feet_y - 26.0) / TILE))
+			if _boss_solid(fcol, head_row) and _boss_solid(fcol, head_row - 1):
+				_boss_feet_y = float((head_row + 1) * TILE) + 26.0
+				_boss_vy = 0.0
+		var frow := int(floor(_boss_feet_y / TILE))
+		if _boss_vy >= 0.0 and _boss_solid(fcol, frow):     # land on top while descending
+			_boss_feet_y = float(frow * TILE)
+			_boss_vy = 0.0; _boss_grounded = true
+		if _boss_feet_y >= float(FLOOR * TILE):             # never below the ground floor
+			_boss_feet_y = float(FLOOR * TILE); _boss_vy = 0.0; _boss_grounded = true
+	sonic_jump_off = _boss_feet_y - float(FLOOR * TILE)
+	# Sonic's BODY is dangerous to touch (except while he reels from a gordo or is dying)
+	if _boss_phase == "pursue" or _boss_phase == "rev":
+		var body := Rect2(sonic_x - 9.0, _boss_feet_y - 28.0, 18.0, 28.0)
+		if not player.dead and body.intersects(player.get_rect()):
+			player.hurt()
+
+	if _boss_phase == "pursue":
+		# STALK Mario: match his level, close in, and only strike when it's a clean line
+		_boss_t += delta
+		var dx: float = player.global_position.x - sonic_x
+		var far: bool = absf(dx) > 8.0 * TILE
+		var mario_above: bool = player.grounded and player.global_position.y < _boss_feet_y - 2.0 * TILE
+		var mario_below: bool = player.global_position.y > _boss_feet_y + 2.0 * TILE
+		# CLIMB toward a higher Mario via the stepping stones: head for the next rung up (even if it's
+		# off to the side — go to the stairs first), hop onto it, then re-evaluate from the higher shelf.
+		# The target is LOCKED for the whole arc (only re-evaluated when grounded) so he commits to landing
+		# on the intermediate stone. Note mario_above flickers false at the top of a hop (it compares
+		# Mario's centre to Sonic's feet) — recomputing airborne would abort the climb, so we DON'T.
+		if _boss_grounded:
+			_boss_step = _boss_pick_step() if mario_above else null
+		var step = _boss_step
+		if step != null:
+			var tx0: float = step.c0 * TILE
+			var tx1: float = (step.c1 + 1) * TILE
+			var aim: float = clampf(sonic_x, tx0, tx1)          # near edge, for the launch-window check
+			var center: float = (tx0 + tx1) * 0.5               # steer for the middle so he lands ON the rung
+			var gap: float = aim - sonic_x
+			_boss_vx = 0.0
+			if absf(center - sonic_x) > 2.0:
+				_boss_vx = (BOSS_WALK_SPD if center > sonic_x else -BOSS_WALK_SPD)
+			# hop when grounded and close enough that the arc lands on the rung (air-steer keeps aiming at it)
+			if _boss_grounded and absf(gap) <= BOSS_LAUNCH_WINDOW:
+				_boss_vy = BOSS_JUMP_V
+		else:
+			# no climb needed: chase Mario's x — unless Mario is a level (or more) BELOW and Sonic
+			# is stuck up on a ledge, in which case DESCEND: step off a ledge edge that has air beside
+			# it, and KEEP pushing that way (even mid-fall) until he lands a level lower, so the
+			# airborne "chase Mario" drift can't yank him back onto the ledge. Repeats rung by rung.
+			var feet_row: int = int(round(_boss_feet_y / TILE))
+			if _boss_descend_dir != 0 and not (_boss_grounded and feet_row > _boss_descend_from_row):
+				_boss_vx = float(_boss_descend_dir) * BOSS_WALK_SPD   # committed to the step-off, still dropping
+			else:
+				_boss_descend_dir = 0                            # landed lower (or not descending) — re-evaluate
+				var plat = _boss_current_platform(feet_row) if (mario_below and _boss_grounded and feet_row < FLOOR) else null
+				if plat != null:
+					_boss_descend_dir = _boss_pick_descend_dir(plat, feet_row, dx)
+					_boss_descend_from_row = feet_row
+				if _boss_descend_dir != 0:
+					_boss_vx = float(_boss_descend_dir) * BOSS_WALK_SPD
+				else:
+					_boss_vx = (1.0 if dx > 0.0 else -1.0) * (BOSS_RUN_SPD if far else BOSS_WALK_SPD)
+		sonic_x = clampf(sonic_x + _boss_vx * delta, _boss_lo, _boss_hi)
+		if absf(_boss_vx) > 1.0:
+			sonic_face = "l" if _boss_vx < 0.0 else "r"
+		sonic_frame_t += delta
+		sonic_state = "jump" if not _boss_grounded else ("run" if far else "walk")
+		_sonic_compute_frame()
+		# strike ONLY with a clean shot: same level, in range, AND no gordo between us (no self-destruct).
+		# Never dash mid-climb (step != null) — finish the ascent first.
+		var lined_up: bool = _boss_grounded and step == null and absf(dx) <= BOSS_DASH_RANGE and absf(player.global_position.y - _boss_feet_y) < 1.5 * TILE
+		if lined_up and _boss_path_clear_to_mario():
+			_boss_phase = "rev"; _boss_t = 0.0
+			_boss_dash_dir = -1 if dx < 0.0 else 1
+			sfx("sonic_spin")                              # the tell — fires as he sets up
+	elif _boss_phase == "rev":
+		# plant and rev (the telegraph) before launching along his current level.
+		# Keep re-aiming at Mario each frame so if he jukes to Sonic's other side during
+		# the rev, the tell turns to follow and the dash never fires AWAY from him.
+		_boss_t += delta
+		var rev_dx: float = player.global_position.x - sonic_x
+		if absf(rev_dx) > 1.0:
+			_boss_dash_dir = -1 if rev_dx < 0.0 else 1
+		sonic_face = "l" if _boss_dash_dir < 0 else "r"
+		sonic_state = "spin"; sonic_frame_t += delta
+		_sonic_compute_frame()
+		if _boss_t >= BOSS_REV_TIME:
+			_boss_phase = "dash"
+			_boss_dash_from = sonic_x                       # remember the launch point so we can cap the roll
+	elif _boss_phase == "dash":
+		# spin-dash straight along his level; Mario must move/jump clear or eat it
+		sonic_x += float(_boss_dash_dir) * BOSS_DASH_SPD * delta
+		sonic_state = "ball"; sonic_frame_t += delta
+		_sonic_compute_frame()
+		var ball := _boss_ball_rect()
+		if not player.dead and ball.intersects(player.get_rect()):
+			player.hurt()                                  # caught -> hurt, dash spent (no gordo)
+			_boss_end_dash(false)                          # just stop where he is (no reel-back)
+		elif _boss_check_gordo_hit(ball):                  # smashed the gordo he actually touches
+			_boss_end_dash(true)                           # self-hit on the spikes -> reel back
+		elif absf(sonic_x - _boss_dash_from) >= BOSS_DASH_MAX:  # travelled the cap -> stop short (bait him closer)
+			sonic_x = clampf(_boss_dash_from + float(_boss_dash_dir) * BOSS_DASH_MAX, _boss_lo, _boss_hi)
+			_boss_end_dash(false)                          # just stop, then resume the chase
+		elif (_boss_dash_dir < 0 and sonic_x <= _boss_lo) or (_boss_dash_dir > 0 and sonic_x >= _boss_hi):
+			sonic_x = clampf(sonic_x, _boss_lo, _boss_hi)
+			_boss_end_dash(false)                          # ran into the wall -> just stop
+	elif _boss_phase == "recoil":
+		# reel back from the spiky gordo (Z1/Z2), then resume the chase (gravity drops him off a ledge)
+		_boss_t += delta
+		sonic_state = "hit"; sonic_face = "l" if _boss_dash_dir < 0 else "r"
+		_sonic_compute_frame()
+		sonic_x = clampf(sonic_x - float(_boss_dash_dir) * BOSS_RECOIL_SPD * delta, _boss_lo, _boss_hi)
+		if _boss_t >= BOSS_RECOIL_TIME:
+			if _boss_hits >= 4:
+				_start_boss_death()
+			else:
+				_boss_phase = "pursue"; _boss_t = 0.0
+
+# Sonic's spin-ball hitbox at his current height
+func _boss_ball_rect() -> Rect2:
+	var cy := float(FLOOR * TILE) + sonic_jump_off
+	return Rect2(sonic_x - 11.0, cy - 22.0, 22.0, 22.0)
+
+# destroy the gordo the ball actually overlaps (the one he HITS); return true if one was hit
+func _boss_check_gordo_hit(ball: Rect2) -> bool:
+	for g in gords:
+		if g.dead:
+			continue
+		if ball.intersects(g.get_rect()):
+			var gc := Vector2i(int(g.global_position.x / TILE), int(g.global_position.y / TILE))
+			g.dead = true
+			g.queue_free()
+			gords.erase(g)
+			_boss_hits += 1
+			_spawn_debris(gc.x, gc.y, true)    # the gordo bursts
+			sfx("gord")                        # Sonic smacking the gordo
+			return true
+	return false
+
+func _boss_end_dash(recoil: bool = true) -> void:
+	# recoil = true only when he smashed a gordo (reel back from the spikes); otherwise he just
+	# stops where he is and goes straight back to stalking Mario (no backward slide).
+	_boss_phase = "recoil" if recoil else "pursue"
+	_boss_t = 0.0
+
+func _start_boss_death() -> void:
+	_boss_dead = true
+	_boss_t = 0.0
+	sonic_state = "death"
+	sonic_speech = false
+	# victory! stop the boss music and play the victory song (not the normal fanfare)
+	music_off = true
+	music_player.stop()
+	if not muted:
+		victory_player.play()
+
+func _update_boss_death(delta: float) -> void:
+	_boss_t += delta
+	sonic_state = "death"
+	_sonic_compute_frame()
+	# classic Sonic death: pop up, then drop off the bottom
+	if _boss_t < 0.5:
+		sonic_jump_off -= 150.0 * delta
+	else:
+		sonic_jump_off += 260.0 * delta
+	if _boss_t >= BOSS_DEATH_TIME:
+		_arena_sonic = false                # Sonic's death arc is done — he's gone from view
+		# hold here until the full victory jingle has finished, THEN reveal COURSE CLEAR
+		if muted or victory_player == null or not victory_player.playing:
+			_boss_active = false
+			if game_state != "clear":
+				game_state = "clear"        # COURSE CLEAR — the final boss is beaten
+				_boss_finale = true         # …and this clear rolls the end credits
+				_finale_t = 0.0
+
+# 3-4 finale: hold COURSE CLEAR a beat, fade the screen to black, then start the credits roll.
+func _update_finale(delta: float) -> void:
+	_finale_t += delta
+	if _finale_t <= FINALE_HOLD:
+		return                                    # let COURSE CLEAR sit for a moment
+	fade_alpha = clampf((_finale_t - FINALE_HOLD) / FINALE_FADE, 0.0, 1.0)
+	if fade_alpha >= 1.0:
+		_start_credits()
+
+func _start_credits() -> void:
+	# Load a real overworld (dark sky + starfield + the actual tileset), then repave it
+	# into one long flat runway so Mario can genuinely RUN to the right the whole time
+	# with nothing to bump into or fall through. The real player + camera do the work.
+	level_num = 1
+	reset(false)
+	_build_credits_runway()
+	# strip anything that could interrupt the run
+	for e in enemies: e.queue_free()
+	for it in items: it.queue_free()
+	enemies.clear(); items.clear()
+	game_state = "credits"
+	_boss_finale = false                          # finale handoff done
+	credits_t = 0.0
+	credits_done = false
+	timing = false                                # no clock during the credits
+	start_delay = 0.0                             # skip the "get ready" freeze
+	fade_alpha = 0.0                              # reveal the scene
+	# swap the level music for the end-credits song
+	music_off = true
+	if music_player: music_player.stop()
+	if end_player and not muted:
+		end_player.play()
+
+func _build_credits_runway() -> void:
+	# wipe the loaded level's tiles and lay two solid ground rows across a wide, flat
+	# runway, plus a few decorative floating block clusters high above Mario's head.
+	LW = 400
+	has_flag = false                              # no random flagpole/castle mid-runway
+	_cam_locked = false
+	terrain.clear()
+	for col in range(LW):
+		terrain.set_cell(Vector2i(col, FLOOR), SOURCE_ID, Vector2i(ATLAS_GROUND, 0))
+		terrain.set_cell(Vector2i(col, FLOOR + 1), SOURCE_ID, Vector2i(ATLAS_GROUND, 0))
+	var top := FLOOR - 4                          # 4 tiles up — well clear of a running Mario
+	for cx in [12, 30, 52, 74, 100, 128, 160, 196, 236, 280, 330]:
+		terrain.set_cell(Vector2i(cx, top), SOURCE_ID, Vector2i(ATLAS_BRICK, 0))
+		terrain.set_cell(Vector2i(cx + 1, top), SOURCE_ID, Vector2i(ATLAS_QUESTION, 0))
+		terrain.set_cell(Vector2i(cx + 2, top), SOURCE_ID, Vector2i(ATLAS_BRICK, 0))
+	_collect_qblocks()                            # so the ? blocks still pulse
+	pipeover_cells.clear()
+	lava_rects.clear()
+
+func _restart_game() -> void:
+	# leave the credits and start a fresh playthrough from world 1-1
+	if end_player: end_player.stop()
+	credits_done = false
+	_boss_finale = false
+	level_num = 1
+	reset(false)
+
+func _update_credits(delta: float) -> void:
+	credits_t += delta
+	# once the roll has fully scrolled ("THE END" settled), Mario stops and any button restarts
+	if not credits_done and credits_t * CREDITS_SCROLL_SPD >= _credits_scroll_max():
+		credits_done = true
+	# stop him a few tiles short of the runway's end so he never runs off into nothing
+	player.global_position.x = minf(player.global_position.x, float((LW - 3) * TILE))
+	_update_camera()                              # normal SMB scroll follows him right
+	bg_renderer.queue_redraw()
+	fg_renderer.queue_redraw()
+
+func _update_arena_seal(delta: float) -> void:
+	if _seal_blocks.is_empty():
+		return
+	var still: Array = []
+	for b in _seal_blocks:
+		var node = b.node
+		if not is_instance_valid(node):
+			continue
+		b.vy += SEAL_G * delta
+		node.position.y += b.vy * delta
+		if node.position.y >= b.target_y:
+			node.position.y = b.target_y
+			if b.kind == "block":
+				# landed: a permanent solid purple block just settles into place, with a bump
+				terrain.set_cell(b.cell, SOURCE_ID, Vector2i(ATLAS_ARENA_WALL, 0))
+				sfx("bump")
+				node.queue_free()
+			else:
+				# gordo landed: leave it in place as a live hazard, with a bump
+				sfx("bump")
+		else:
+			still.append(b)
+	_seal_blocks = still
+
+func _clear_seal_blocks() -> void:
+	for b in _seal_blocks:
+		if is_instance_valid(b.node) and b.kind == "block":
+			b.node.queue_free()   # gords are owned by gords[] and freed there
+	_seal_blocks.clear()
 
 func _check_pipe_exit() -> void:
 	if pipe_exit or not PIPE_EXIT_MAP.has(_level_file) or pipeover_cells.is_empty():
@@ -2658,6 +3452,8 @@ func _sonic_compute_frame() -> void:
 		sonic_frame = int(sonic_frame_t * SPIN_REV_FPS) % 3
 	elif sonic_state == "ball":
 		sonic_frame = int(sonic_frame_t * SPIN_BALL_FPS) % 4
+	elif sonic_state == "hit" or sonic_state == "death":
+		sonic_frame = 0                       # Z1/Z2 and the death pose are single frames
 	else:
 		var counts:= {"walk": 6, "run": 4, "jump": 5}
 		var fps:= {"walk": 9.0, "run": 13.0, "jump": 7.0}
@@ -3194,6 +3990,7 @@ func _setup_audio() -> void:
 	intro_music = load(beat_path) if ResourceLoader.exists(beat_path) else null
 	underground_music = load("res://audio/mario sound/extra/under.mp3")   # 1-2 underground theme
 	castle_music = load("res://audio/mario sound/extra/cas.mp3")          # 1-4 Bowser castle theme
+	boss_music = load("res://audio/mario sound/sonic/boss.mp3")           # 3-4 Sonic boss theme
 	music_player = AudioStreamPlayer.new()
 	music_player.stream = overworld_music
 	music_player.pitch_scale = 1.0     # play the song at its natural speed
@@ -3209,6 +4006,18 @@ func _setup_audio() -> void:
 	fanfare_player.volume_db = linear_to_db(0.85)
 	fanfare_player.bus = "SFX"
 	add_child(fanfare_player)
+	# victory song for the 3-4 Sonic boss (plays when he's defeated)
+	victory_player = AudioStreamPlayer.new()
+	victory_player.stream = load("res://audio/mario sound/victory.mp3")
+	victory_player.volume_db = linear_to_db(0.9)
+	victory_player.bus = "Music"
+	add_child(victory_player)
+	# the end-credits song
+	end_player = AudioStreamPlayer.new()
+	end_player.stream = load("res://audio/mario sound/end m.mp3")
+	end_player.volume_db = linear_to_db(0.9)
+	end_player.bus = "Music"
+	add_child(end_player)
 	# the "mac" rescue song for 1-4 (Bowser castle) — plays when Mario reaches mac instead
 	# of the stage-clear fanfare
 	mac_player = AudioStreamPlayer.new()
@@ -3325,7 +4134,9 @@ func _apply_level_music() -> void:
 		return
 	var g: Dictionary = LEVEL_GEOMETRY[_level_file]
 	var want: AudioStream = overworld_music
-	if bool(g["under"]):
+	if _level_file == 17:
+		want = boss_music                     # 3-4 Sonic boss stage
+	elif bool(g["under"]):
 		want = underground_music
 	elif bool(g.get("cas", false)):
 		want = castle_music
@@ -3354,9 +4165,9 @@ func toggle_mute() -> void:
 	else:
 		AudioServer.set_bus_mute(0, false)
 
-func sfx(name: String) -> void:
+func sfx(name: String) -> AudioStreamPlayer:
 	if muted:
-		return
+		return null
 	var path := ""
 	match name:
 		"jump_small": path = "res://audio/mario sound/jump small.mp3"
@@ -3378,8 +4189,9 @@ func sfx(name: String) -> void:
 		"one_up": path = "res://audio/mario sound/sonic/1-up.mp3"         # 1-2 cutscene: after Sonic smashes through
 		"sonic_jump": path = "res://audio/mario sound/sonic/jump.wav"     # Sonic's jump in his cutscenes
 		"sonic_spin": path = "res://audio/mario sound/sonic/spin.wav"     # Sonic revving up a spin-dash
+		"gord": path = "res://audio/mario sound/gord.wav"                 # Sonic's spin-dash smashing a gordo
 	if path == "":
-		return
+		return null
 	var gain := 9.0 if name == "coin" else 1.0   # coin plays much louder
 	var p := AudioStreamPlayer.new()
 	p.stream = load(path)
@@ -3389,6 +4201,7 @@ func sfx(name: String) -> void:
 	add_child(p)
 	p.play()
 	p.finished.connect(p.queue_free)
+	return p
 
 func _stop_all_sfx() -> void:
 	# silence every in-flight one-shot SFX (e.g. a jump sound started the frame before
@@ -3606,6 +4419,12 @@ func _bake_sonic_frames() -> void:
 		"duck_r": [[226,237,247,256]],
 		"spin_r": [[264,237,291,256],[300,237,321,255],[333,237,355,256]],
 		"ball_r": [[218,299,239,321],[245,299,267,320],[274,298,295,320],[302,300,324,321]],
+		# boss fight: Z1/Z2 = smashing a gordo with the spin-dash (facing left / right);
+		# SONIC DEATH = the defeat pose (arms up) played after all 4 gordos are hit
+		"hit_l":   [[61, 463, 90, 491]],    # Z1 (facing left)
+		"hit_r":   [[273, 463, 302, 491]],  # Z2 (facing right)
+		"death_l": [[118, 417, 142, 449]],
+		"death_r": [[118, 417, 142, 449]],
 	}
 	for key in anims:
 		var i := 0
@@ -3732,15 +4551,25 @@ func _unhandled_input(event: InputEvent) -> void:
 	if paused:
 		_pause_menu_input(event)
 		return
+	# end credits: once "THE END" has settled, any button press restarts the whole game
+	if game_state == "credits":
+		if credits_done and (event is InputEventKey or event is InputEventJoypadButton) \
+				and event.pressed and not event.echo:
+			_restart_game()
+		return   # swallow all other input while the credits play
 	if event is InputEventKey and event.pressed and not event.echo:
 		start_music_on_input()
 	if event.is_action_pressed("restart"):
 		reset(true)
 	if event.is_action_pressed("mute"):
 		toggle_mute()
-	# DEBUG stage warp: 1-9 = that slot, 0 = 10, - = 11, = = 12, Backspace = 13, \ = 14, ] = 15 (remove for release)
-	if event is InputEventKey and ((event.keycode >= KEY_1 and event.keycode <= KEY_9) or event.keycode == KEY_0 or event.keycode == KEY_MINUS or event.keycode == KEY_EQUAL or event.keycode == KEY_BACKSPACE or event.keycode == KEY_BACKSLASH or event.keycode == KEY_BRACKETRIGHT):
-		if event.keycode == KEY_BRACKETRIGHT:
+	# DEBUG stage warp: 1-9 = that slot, 0 = 10, - = 11, = = 12, Backspace = 13, \ = 14, ] = 15, [ = 16, ' = 17 (remove for release)
+	if event is InputEventKey and ((event.keycode >= KEY_1 and event.keycode <= KEY_9) or event.keycode == KEY_0 or event.keycode == KEY_MINUS or event.keycode == KEY_EQUAL or event.keycode == KEY_BACKSPACE or event.keycode == KEY_BACKSLASH or event.keycode == KEY_BRACKETRIGHT or event.keycode == KEY_BRACKETLEFT or event.keycode == KEY_APOSTROPHE):
+		if event.keycode == KEY_APOSTROPHE:
+			level_num = 17
+		elif event.keycode == KEY_BRACKETLEFT:
+			level_num = 16
+		elif event.keycode == KEY_BRACKETRIGHT:
 			level_num = 15
 		elif event.keycode == KEY_BACKSLASH:
 			level_num = 14

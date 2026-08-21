@@ -9,9 +9,13 @@ dist/
 
 # Local safety backups & temp files
 *.bak
+*.bak-*
 *.corrupt
 *.tmp
 *.orig
+
+# Dev screenshot / test-capture output
+_shots/
 
 # OS cruft
 Thumbs.db

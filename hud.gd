@@ -37,6 +37,10 @@ func refresh() -> void:
 
 func _paint(ci: CanvasItem) -> void:
 	var w := float(main.VIEW_W)
+	# 3-4 end credits: the overworld run-and-scroll finale takes over the whole screen
+	if main.game_state == "credits":
+		_paint_credits(ci)
+		return
 	# between-level black card: full black, ONLY the next-level name centred
 	if main.show_level_card:
 		ci.draw_rect(Rect2(0, 0, w, float(main.VIEW_H)), Color.BLACK)
@@ -65,9 +69,6 @@ func _paint(ci: CanvasItem) -> void:
 		ci.draw_rect(Rect2(0, cy - 32, w, 64), Color(0.04, 0.04, 0.06, 1.0))
 		font.draw_text(ci, Vector2(0, cy - 10), "COURSE CLEAR", 2.0, Color.WHITE, w)
 		font.draw_text(ci, Vector2(0, cy + 8), "TIME " + main.time_string(), 1.0, Color.WHITE, w)
-		# auto-advancing to 1-2 → no restart prompt; only show it on the final clear
-		if not main.advancing:
-			font.draw_text(ci, Vector2(0, cy + 22), "PRESS R TO RESTART", 1.0, Color.WHITE, w)
 
 	# Level10 Sonic preview: name the current animation at the bottom
 	if main.sonic_demo:
@@ -204,6 +205,26 @@ func _paint_filter_row(ci: CanvasItem, by: float, selected: bool) -> void:
 		Vector2(vx + vw, midy), Vector2(vx + vw - 5, midy - 4), Vector2(vx + vw - 5, midy + 4)]), col)
 	# filter name centred between the arrows
 	font.draw_text(ci, Vector2(vx + 8, by), fname, 1.0, col, vw - 16.0)
+
+
+# ---- 3-4 END CREDITS ----
+# Only the scrolling credit lines — the real overworld level + running Mario render
+# beneath (this HUD sits on top), so we draw text over a transparent screen. Lines crawl
+# up and settle with "THE END" holding near the top.
+func _paint_credits(ci: CanvasItem) -> void:
+	var w := float(main.VIEW_W)
+	var line_h: float = main.CREDITS_LINE_H
+	var start_y: float = main.CREDITS_START_Y                  # first line enters just above Mario's lane
+	var scroll_max: float = main._credits_scroll_max()
+	var scroll: float = minf(main.credits_t * main.CREDITS_SCROLL_SPD, scroll_max)
+	var y := start_y - scroll
+	for entry in main.CREDITS_LINES:
+		var txt := String(entry[0])
+		if txt != "" and y > -24.0 and y < start_y + 4.0:
+			var sc := float(entry[1])
+			var c: Array = entry[2]
+			font.draw_text(ci, Vector2(0, y), txt, sc, Color(c[0], c[1], c[2]), w)
+		y += line_h
 
 
 # The actual drawing surface: a Control so the HUD stays screen-fixed.

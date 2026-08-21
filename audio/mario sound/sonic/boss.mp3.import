@@ -1,0 +1,19 @@
+[remap]
+
+importer="mp3"
+type="AudioStreamMP3"
+uid="uid://dxh2wpkaiivs5"
+path="res://.godot/imported/boss.mp3-a9caac7eed575d9b734b5e782268730c.mp3str"
+
+[deps]
+
+source_file="res://audio/mario sound/sonic/boss.mp3"
+dest_files=["res://.godot/imported/boss.mp3-a9caac7eed575d9b734b5e782268730c.mp3str"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4
