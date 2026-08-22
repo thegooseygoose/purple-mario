@@ -8,6 +8,7 @@ class_name Hud
 var main                       # untyped to avoid a cyclic class dependency
 var font: PixelFont
 var coins_tex: Texture2D       # 3 coin spin frames (16px each), shared with the world
+var course_tex: Texture2D      # "COURSE CLEARED!!!" card (purple box; time drawn inside it)
 var _canvas: Control
 var _msg_text := ""
 var _msg_hide_ms := 0
@@ -16,6 +17,7 @@ var _msg_hide_ms := 0
 func _ready() -> void:
 	font = PixelFont.new()
 	coins_tex = load("res://sprites/coins.png")
+	course_tex = load("res://sprites/new player/COURSE.png")
 	_canvas = HudCanvas.new()
 	_canvas.hud = self
 	_canvas.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
@@ -59,16 +61,23 @@ func _paint(ci: CanvasItem) -> void:
 	font.draw_text(ci, Vector2(206, 11), "TIME", 1.0, Color.WHITE)
 	font.draw_text(ci, Vector2(206, 21), main.time_string(), 1.0, Color.WHITE)
 
-	# COURSE CLEAR overlay — shows how fast the stage was beaten
+	# COURSE CLEAR overlay — the "COURSE CLEARED!!!" card with the finish time in its box
 	if main.game_state == "clear":
-		var cy: float = main.VIEW_H / 2.0 - 50.0
+		var cscale := 0.35
+		var cw2: float = float(course_tex.get_width()) * cscale
+		var ch2: float = float(course_tex.get_height()) * cscale
+		var cx2: float = (w - cw2) / 2.0
+		var cy2: float = (float(main.VIEW_H) - ch2) / 2.0 - 38.0
 		if main._level_file == 15:
-			# DK stage (2-4): put the banner BELOW Mario so it doesn't cover Amazon
-			cy = clampf(main.player.global_position.y + 56.0, 40.0, main.VIEW_H - 34.0)
-		# solid dark band so the busy castle behind doesn't bleed through the text
-		ci.draw_rect(Rect2(0, cy - 32, w, 64), Color(0.04, 0.04, 0.06, 1.0))
-		font.draw_text(ci, Vector2(0, cy - 10), "COURSE CLEAR", 2.0, Color.WHITE, w)
-		font.draw_text(ci, Vector2(0, cy + 8), "TIME " + main.time_string(), 1.0, Color.WHITE, w)
+			# DK stage (2-4): drop the card lower so it doesn't cover Amazon up top
+			cy2 = clampf(main.player.global_position.y + 20.0, 20.0, float(main.VIEW_H) - ch2 - 6.0)
+		# transparent interior — the card is just the purple frame + text over the live scene
+		ci.draw_texture_rect(course_tex, Rect2(cx2, cy2, cw2, ch2), false)
+		# the finish time, centred inside the lower purple box
+		font.draw_text(ci, Vector2(cx2, cy2 + ch2 * 0.72), "TIME " + main.time_string(), 1.0, Color.WHITE, cw2)
+		# NEW RECORD flash under the card when this clear beat the file's best time
+		if main._new_record and fmod(main.qanim_phase, 0.5) < 0.32:
+			font.draw_text(ci, Vector2(0, cy2 + ch2 + 12.0), "NEW RECORD", 1.0, Color(1.0, 0.85, 0.2), w)
 
 	# Level10 Sonic preview: name the current animation at the bottom
 	if main.sonic_demo:
@@ -137,8 +146,8 @@ func _paint_pause(ci: CanvasItem, w: float) -> void:
 	ci.draw_rect(Rect2(0, 0, w, h), Color(0, 0, 0, 0.72))
 	var pw := 180.0
 	var px := (w - pw) / 2.0
-	var py := 54.0
-	var ph := 138.0
+	var py := 44.0
+	var ph := 162.0
 	ci.draw_rect(Rect2(px, py, pw, ph), Color(0.10, 0.10, 0.16, 0.96))
 	ci.draw_rect(Rect2(px, py, pw, 2), Color.WHITE)
 	ci.draw_rect(Rect2(px, py + ph - 2, pw, 2), Color.WHITE)
@@ -150,11 +159,22 @@ func _paint_pause(ci: CanvasItem, w: float) -> void:
 	_paint_vol_row(ci, py + 52, "MUSIC", main.music_volume, sel == 0)
 	_paint_vol_row(ci, py + 74, "SOUND", main.sfx_volume, sel == 1)
 	_paint_filter_row(ci, py + 96, sel == 2)
+	_paint_action_row(ci, py + 120, "MAIN MENU", sel == 3)
 
 	# controls hint
 	var hint := Color(0.7, 0.7, 0.78)
 	font.draw_text(ci, Vector2(0, py + ph - 14), "UP DOWN PICK   LEFT RIGHT SET", 1.0, hint, w)
-	font.draw_text(ci, Vector2(0, py + ph - 5), "ESC RESUME", 1.0, hint, w)
+	font.draw_text(ci, Vector2(0, py + ph - 5), "ESC RESUME   ENTER SELECT", 1.0, hint, w)
+
+
+# A plain selectable row (no slider), e.g. MAIN MENU. `by` is the text baseline.
+func _paint_action_row(ci: CanvasItem, by: float, label: String, selected: bool) -> void:
+	var lx := (float(main.VIEW_W) - 180.0) / 2.0 + 14.0
+	var col := Color(1.0, 0.85, 0.2) if selected else Color.WHITE
+	if selected:
+		ci.draw_colored_polygon(PackedVector2Array([
+			Vector2(lx - 10, by - 6), Vector2(lx - 4, by - 3), Vector2(lx - 10, by)]), col)
+	font.draw_text(ci, Vector2(lx, by), label, 1.0, col)
 
 
 # One "LABEL [######----] 60" row. `by` is the text baseline.

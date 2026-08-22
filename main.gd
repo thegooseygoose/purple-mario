@@ -231,6 +231,62 @@ var saved_tier := "small"       # power tier Mario STARTS the next level as (car
 var level_num := 1              # 1 = world 1-1, 2 = world 1-2
 const LEVEL_COUNT := 17         # number of levels in LEVEL_ORDER (debug stage select; 10=key 0, 11=key -, 12=key =, 13=key Backspace, 14=key \, 15=key ], 16=key [, 17=key ')
 static var debug_start_level := 1   # DEBUG: level the intro's stage-select boots into
+
+# --- SAVE FILES: 3 slots, each a name, the highest world reached, and a best time per level ---
+static var save_slot := 0                 # which of the 3 files is active this run
+static var save_names: Array = ["", "", ""]
+static var save_highest: Array = [0, 0, 0]   # highest level_num reached per slot (0 = brand new)
+static var save_best: Array = [[], [], []]   # per slot: LEVEL_COUNT best clear times (0 = none yet)
+static var save_beat: Array = [false, false, false]  # per slot: has this file beaten 3-4? (unlocks LEVEL SELECT)
+static var boot_to_files := false            # set when quitting to menu → intro opens at the file list
+const SAVES_PATH := "user://saves.cfg"
+
+static func load_saves() -> void:
+	var cfg := ConfigFile.new()
+	var ok := cfg.load(SAVES_PATH) == OK
+	for i in 3:
+		save_names[i] = String(cfg.get_value("slot%d" % i, "name", "")) if ok else ""
+		save_highest[i] = int(cfg.get_value("slot%d" % i, "highest", 0)) if ok else 0
+		save_beat[i] = bool(cfg.get_value("slot%d" % i, "beat", false)) if ok else false
+		var a: Array = []
+		for l in LEVEL_COUNT:
+			a.append(float(cfg.get_value("slot%d" % i, "best%d" % l, 0.0)) if ok else 0.0)
+		save_best[i] = a
+
+static func save_saves() -> void:
+	var cfg := ConfigFile.new()
+	for i in 3:
+		cfg.set_value("slot%d" % i, "name", save_names[i])
+		cfg.set_value("slot%d" % i, "highest", save_highest[i])
+		cfg.set_value("slot%d" % i, "beat", save_beat[i])
+		var a: Array = save_best[i]
+		for l in LEVEL_COUNT:
+			cfg.set_value("slot%d" % i, "best%d" % l, (a[l] if l < a.size() else 0.0))
+	cfg.save(SAVES_PATH)
+
+# call as levels load — bumps the active slot's furthest-reached world and persists it
+static func record_progress(lvl: int) -> void:
+	if save_slot >= 0 and save_slot < 3 and lvl > int(save_highest[save_slot]):
+		save_highest[save_slot] = lvl
+		save_saves()
+
+# call on a level clear — store the finish time if it beats the slot's record for that
+# level. Returns true when a NEW best was set (first-ever time, or a quicker one).
+static func record_best_time(lvl: int, secs: float) -> bool:
+	if save_slot < 0 or save_slot >= 3:
+		return false
+	var a: Array = save_best[save_slot]
+	if a.size() < LEVEL_COUNT:
+		return false
+	var idx := lvl - 1
+	if idx < 0 or idx >= LEVEL_COUNT:
+		return false
+	var cur := float(a[idx])
+	if cur <= 0.0 or secs < cur:
+		a[idx] = secs
+		save_saves()
+		return true
+	return false
 var world_label := "1-1"        # shown in the HUD
 var underground := false         # true = black bg, no starfield (1-4 is underground)
 const SKY_COLOR := Color(0.16, 0.16, 0.19)   # night-sky clear colour for surface levels
@@ -409,6 +465,8 @@ const CREDITS_LINE_H := 22.0     # vertical spacing between lines
 const CREDITS_START_Y := 168.0   # y the first line enters at (just above Mario's lane)
 const CREDITS_REST_Y := 84.0     # y the final line ("THE END") settles at
 var credits_done := false        # the roll has finished — Mario stops; any button restarts
+var _recorded_clear := false     # save-file: guard so a level's best time is recorded once
+var _new_record := false         # true if this clear set a new best time (shows "NEW RECORD")
 # Each entry: [text, scale, [r,g,b]]. Blank strings are spacer rows. Font is A-Z/0-9/.!:- only.
 const CREDITS_LINES := [
 	["GOOSE PRANDINI MEDIA", 2.0, [1.0, 0.82, 0.30]],
@@ -653,6 +711,9 @@ func _physics_process(delta: float) -> void:
 	if _level_file == 14:
 		_update_l14_audio()
 	if game_state == "clear":
+		if not _recorded_clear:
+			_new_record = record_best_time(level_num, elapsed)   # save-file: log time; true = new best
+			_recorded_clear = true
 		# 3-4 finale: after COURSE CLEAR, hold, fade to black, then roll the end credits
 		if _boss_finale:
 			_update_finale(delta)
@@ -1022,6 +1083,9 @@ func reset(preserve_progress := true) -> void:
 
 	# a fresh level instance restores every used / broken block
 	_instance_level()
+	record_progress(level_num)          # save-file: remember the furthest world reached
+	_recorded_clear = false             # arm best-time recording for this level
+	_new_record = false
 	# 1-2 Sonic cutscene: re-arm and locate the trigger pipe (file 4 only)
 	sonic_cut = false
 	sonic_speech = false
@@ -2961,6 +3025,10 @@ func _start_boss_death() -> void:
 	_boss_t = 0.0
 	sonic_state = "death"
 	sonic_speech = false
+	timing = false                # 3-4: freeze the clock the moment Sonic is beaten
+	if save_slot >= 0 and save_slot < 3:
+		save_beat[save_slot] = true   # game cleared → unlock LEVEL SELECT for this file
+		save_saves()
 	# victory! stop the boss music and play the victory song (not the normal fanfare)
 	music_off = true
 	music_player.stop()
@@ -4611,7 +4679,7 @@ func toggle_pause() -> void:
 	# MUSIC volume slider is audible as you adjust it. Only gameplay is frozen.
 	hud.refresh()
 
-const PAUSE_ROWS := 3   # 0 = MUSIC, 1 = SOUND, 2 = FILTER
+const PAUSE_ROWS := 4   # 0 = MUSIC, 1 = SOUND, 2 = FILTER, 3 = MAIN MENU
 
 # Pause-menu navigation: Up/Down pick the row, Left/Right change that row.
 func _pause_menu_input(event: InputEvent) -> void:
@@ -4627,11 +4695,23 @@ func _pause_menu_input(event: InputEvent) -> void:
 		_pause_row_adjust(-1)
 	elif event.is_action_pressed("move_right"):
 		_pause_row_adjust(1)
+	elif pause_sel == PAUSE_ROWS - 1 and (event.is_action_pressed("jump") \
+			or (event is InputEventKey and (event.keycode == KEY_ENTER or event.keycode == KEY_KP_ENTER)) \
+			or (event is InputEventJoypadButton and event.pressed and event.button_index == JOY_BUTTON_A)):
+		_quit_to_menu()
 	elif event.is_action_pressed("mute"):
 		toggle_mute()
 
+func _quit_to_menu() -> void:
+	paused = false
+	save_saves()                              # make sure progress/records are on disk
+	boot_to_files = true                      # tell the intro to open straight at the file list
+	get_tree().change_scene_to_file("res://Intro.tscn")
+
 # Left/Right on the selected row: volume for the two audio rows, filter cycle for the third.
 func _pause_row_adjust(dir: int) -> void:
+	if pause_sel >= 3:
+		return                               # MAIN MENU row has nothing to slide
 	if pause_sel == 2:
 		filter_mode = (filter_mode + dir + FILTER_NAMES.size()) % FILTER_NAMES.size()
 		_apply_filter()
