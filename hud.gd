@@ -61,6 +61,12 @@ func _paint(ci: CanvasItem) -> void:
 	font.draw_text(ci, Vector2(206, 11), "TIME", 1.0, Color.WHITE)
 	font.draw_text(ci, Vector2(206, 21), main.time_string(), 1.0, Color.WHITE)
 
+	# attract/demo mode banner
+	if main.attract_mode:
+		font.draw_text(ci, Vector2(0, 31), "- DEMO -", 1.0, Color(1.0, 0.85, 0.2), w)
+		if fmod(main.qanim_phase, 0.8) < 0.5:
+			font.draw_text(ci, Vector2(0, float(main.VIEW_H) - 11), "PRESS START", 1.0, Color.WHITE, w)
+
 	# COURSE CLEAR overlay — the "COURSE CLEARED!!!" card with the finish time in its box
 	if main.game_state == "clear":
 		var cscale := 0.35
@@ -233,18 +239,34 @@ func _paint_filter_row(ci: CanvasItem, by: float, selected: bool) -> void:
 # up and settle with "THE END" holding near the top.
 func _paint_credits(ci: CanvasItem) -> void:
 	var w := float(main.VIEW_W)
-	var line_h: float = main.CREDITS_LINE_H
-	var start_y: float = main.CREDITS_START_Y                  # first line enters just above Mario's lane
+	var start_y: float = main.CREDITS_START_Y                  # first item enters just above Mario's lane
 	var scroll_max: float = main._credits_scroll_max()
 	var scroll: float = minf(main.credits_t * main.CREDITS_SCROLL_SPD, scroll_max)
 	var y := start_y - scroll
-	for entry in main.CREDITS_LINES:
-		var txt := String(entry[0])
-		if txt != "" and y > -24.0 and y < start_y + 4.0:
-			var sc := float(entry[1])
-			var c: Array = entry[2]
-			font.draw_text(ci, Vector2(0, y), txt, sc, Color(c[0], c[1], c[2]), w)
-		y += line_h
+	for it in main._credits_items():
+		var h: float = float(it["h"])
+		if y > -h and y < start_y + 4.0:
+			if it["kind"] == "text":
+				var txt := String(it["text"])
+				if txt != "":
+					var c: Array = it["col"]
+					font.draw_text(ci, Vector2(0, y), txt, float(it["scale"]), Color(c[0], c[1], c[2]), w)
+			else:
+				_paint_cast(ci, w, y, String(it["key"]), String(it["name"]))
+		y += h
+
+
+# one enemy portrait (scaled to ~26px tall, centred) with its name beneath it
+func _paint_cast(ci: CanvasItem, w: float, y: float, key: String, nm: String) -> void:
+	var t: Texture2D = main.tex.get(key)
+	if t != null:
+		var sz := t.get_size()
+		var target := 26.0
+		var s: float = target / maxf(1.0, sz.y)
+		var dw := sz.x * s
+		var dh := sz.y * s
+		ci.draw_texture_rect(t, Rect2(floorf((w - dw) / 2.0), floorf(y - dh), dw, dh), false)
+	font.draw_text(ci, Vector2(0, y + 10.0), nm, 1.0, Color.WHITE, w)
 
 
 # The actual drawing surface: a Control so the HUD stays screen-fixed.

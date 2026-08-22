@@ -31,6 +31,7 @@ var big := false
 var fire := false               # fire power (implies big); can shoot fireballs
 var facing := 1
 var walk_anim := 0.0
+var _ai_jump_hold := 0.0          # attract-demo: how long to keep the jump button held
 var wall_push := 0.0            # >0 while pushing into a wall (is_on_wall flickers)
 var ducking := false            # big/fire Mario crouching (hold Down)
 var duck_locked := false        # a duck-jump stays ducked until it lands (ignores Down release)
@@ -113,6 +114,54 @@ func _set_col(sz: Vector2) -> void:
 func half_w() -> float:
 	return col_size.x / 2.0
 
+# ---- attract-mode auto-play AI ----
+# Runs right + run, and jumps over pits, obstacles (pipes/steps), and enemies ahead.
+func _attract_ai(delta: float) -> void:
+	Input.action_press("move_right")
+	Input.action_press("run")
+	Input.action_release("move_left")
+	Input.action_release("move_down")
+	var TILE: int = main.TILE
+	var cx := int(global_position.x / float(TILE))
+	var feet_row := int((global_position.y + col_size.y * 0.5) / float(TILE))
+	# a pit ahead? no ground in the next few tiles under the feet (jump early to clear wide gaps)
+	var gap := true
+	for dc in [1, 2, 3]:
+		if _ai_solid(cx + dc, feet_row):
+			gap = false
+			break
+	# an obstacle ahead at body height (pipe / step / block) — look 1-2 tiles ahead, up to 3 tall
+	var obstacle := false
+	for dc in [1, 2]:
+		if _ai_solid(cx + dc, feet_row - 1) or _ai_solid(cx + dc, feet_row - 2) or _ai_solid(cx + dc, feet_row - 3):
+			obstacle = true
+			break
+	var blocked := is_on_wall()                   # pressed against a pipe/wall → hop over it
+	# an enemy just ahead at about our height
+	var enemy_near := false
+	for e in main.enemies:
+		if e.dead:
+			continue
+		var dxx: float = e.global_position.x - global_position.x
+		var dyy: float = absf(e.global_position.y - global_position.y)
+		if dxx > 4.0 and dxx < 3.0 * TILE and dyy < 1.5 * TILE:
+			enemy_near = true
+			break
+	if is_on_floor() and _ai_jump_hold <= 0.0 and (gap or obstacle or enemy_near or blocked):
+		_ai_jump_hold = 0.46                      # full-height jump (clears the tall pipes)
+	if _ai_jump_hold > 0.0:
+		Input.action_press("jump")
+		_ai_jump_hold -= delta
+		if _ai_jump_hold <= 0.0:
+			Input.action_release("jump")
+	else:
+		Input.action_release("jump")
+
+func _ai_solid(col: int, row: int) -> bool:
+	if main.terrain == null or row < 0 or row > 14:
+		return false
+	return main.terrain.get_cell_source_id(Vector2i(col, row)) >= 0
+
 func get_rect() -> Rect2:
 	return Rect2(global_position - col_size / 2.0, col_size)
 
@@ -182,6 +231,9 @@ func _physics_process(delta: float) -> void:
 		return
 	if main.game_state == "clear":
 		return
+
+	if main.attract_mode:
+		_attract_ai(delta)      # self-playing demo: AI drives the inputs, then normal physics run
 
 	if main.game_state == "credits":
 		# end-credits run: hold RIGHT + RUN, never jump/duck/fire — Mario just runs on.

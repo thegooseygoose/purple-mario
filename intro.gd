@@ -29,11 +29,15 @@ var con_rect: Rect2
 var file_img: Texture2D        # FILE.png — the 3-slot save-file select screen
 var file_rect: Rect2
 var file_sel := 0              # which of the 3 files is highlighted
+var file_idle := 0.0          # seconds idle on the file screen → triggers the attract demo
+const ATTRACT_IDLE := 12.0    # idle time before the self-playing demo kicks in
 var menu_img: Texture2D        # main1.png — START GAME / LEVEL RECORDS / (locked) LEVEL SELECT
 var menu2_img: Texture2D       # main2.png — the UNLOCKED version (LEVEL SELECT active)
 var menu_rect: Rect2
 var menu_sel := 0             # 0 = START GAME, 1 = LEVEL RECORDS, 2 = LEVEL SELECT
 var levelsel_idx := 0        # highlighted cell on the LEVEL SELECT grid (0..11)
+var levelsel_back := "menu"  # phase to return to from LEVEL SELECT ("menu" or "file" for the debug cheat)
+var _n_count := 0            # consecutive "N" presses on the file screen (NNNNN = debug level select)
 const MENU_FRACS := [0.273, 0.505, 0.736]   # the three option row centres in main1/main2.png
 var music: AudioStreamPlayer
 
@@ -92,8 +96,15 @@ func _ready() -> void:
 	if music.stream and music.stream is AudioStreamMP3:
 		music.stream.loop = false
 
+	# returning from a LEVEL SELECT run → reopen the LEVEL SELECT screen
+	if Main.boot_to_levelsel:
+		Main.boot_to_levelsel = false
+		Main.load_saves()
+		levelsel_idx = 0
+		levelsel_back = String(Main.ls_back)
+		_goto("levelsel")
 	# returning from a game via "MAIN MENU" → skip the logo/controls, open the file list
-	if Main.boot_to_files:
+	elif Main.boot_to_files:
 		Main.boot_to_files = false
 		Main.load_saves()
 		_open_files()
@@ -132,6 +143,10 @@ func _process(delta: float) -> void:
 				_open_files()          # after the controls screen, go straight to the file list
 		"title":
 			pass
+		"file":
+			file_idle += delta
+			if file_idle >= ATTRACT_IDLE:
+				_start_attract()
 	queue_redraw()
 
 
@@ -163,20 +178,24 @@ func _input(event: InputEvent) -> void:
 	var kc: int = event.keycode
 	if kc == KEY_P:
 		_open_files()
-	elif (kc >= KEY_1 and kc <= KEY_9) or kc == KEY_0 or kc == KEY_MINUS or kc == KEY_EQUAL or kc == KEY_BACKSPACE or kc == KEY_BACKSLASH or kc == KEY_BRACKETRIGHT or kc == KEY_BRACKETLEFT or kc == KEY_APOSTROPHE:   # DEBUG stage select (0=10, -=11, ==12, Backspace=13, \=14, ]=15, [=16, '=17)
-		var slot := 17 if kc == KEY_APOSTROPHE else (16 if kc == KEY_BRACKETLEFT else (15 if kc == KEY_BRACKETRIGHT else (14 if kc == KEY_BACKSLASH else (13 if kc == KEY_BACKSPACE else (12 if kc == KEY_EQUAL else (11 if kc == KEY_MINUS else (10 if kc == KEY_0 else kc - KEY_1 + 1)))))))
-		Main.save_slot = -1                       # DEBUG warp: don't touch any save file
-		Main.debug_start_level = clampi(slot, 1, Main.LEVEL_COUNT)
-		_start_game()
 
 
 func _open_files() -> void:
 	Main.load_saves()
 	file_sel = 0
+	file_idle = 0.0
 	_goto("file")
 
 
+func _start_attract() -> void:
+	Main.attract_mode = true
+	Main.save_slot = -1              # demo touches no save file
+	Main.debug_start_level = 1       # auto-play world 1-1
+	_start_game()
+
+
 func _file_input(event: InputEvent) -> void:
+	file_idle = 0.0                 # any input resets the attract-demo timer
 	# gamepad: D-pad up/down to pick, Start/A to confirm
 	if event is InputEventJoypadButton and event.pressed:
 		if event.button_index == JOY_BUTTON_DPAD_UP:
@@ -190,6 +209,15 @@ func _file_input(event: InputEvent) -> void:
 	if not (event is InputEventKey and event.pressed and not event.echo):
 		return
 	var kc: int = event.keycode
+	# hidden debug cheat: press N five times in a row → LEVEL SELECT (all 12 levels)
+	if kc == KEY_N:
+		_n_count += 1
+		if _n_count >= 5:
+			_n_count = 0
+			_open_debug_levelsel()
+			return
+	else:
+		_n_count = 0
 	if kc == KEY_UP:
 		file_sel = (file_sel + 2) % 3
 	elif kc == KEY_DOWN:
@@ -214,6 +242,13 @@ func _confirm_file() -> void:
 	Main.save_saves()
 	menu_sel = 0
 	_goto("menu")                       # → START GAME / LEVEL RECORDS
+
+
+func _open_debug_levelsel() -> void:
+	Main.save_slot = file_sel            # play/record on the highlighted file
+	levelsel_idx = 0
+	levelsel_back = "file"               # ESC returns to the file screen
+	_goto("levelsel")
 
 
 func _menu_opts() -> int:
@@ -248,14 +283,14 @@ func _menu_input(event: InputEvent) -> void:
 func _menu_confirm() -> void:
 	match menu_sel:
 		0:
-			var hi: int = int(Main.save_highest[Main.save_slot])
-			Main.debug_start_level = clampi(maxi(hi, 1), 1, Main.LEVEL_COUNT)   # resume at furthest world
+			Main.debug_start_level = Main.resume_slot()    # resume at the furthest level reached
 			_start_game()
 		1:
 			_goto("records")
 		2:
 			if bool(Main.save_beat[Main.save_slot]):
 				levelsel_idx = 0
+				levelsel_back = "menu"
 				_goto("levelsel")
 
 
@@ -280,7 +315,7 @@ func _levelsel_input(event: InputEvent) -> void:
 			JOY_BUTTON_DPAD_UP: row = (row + 3) % 4
 			JOY_BUTTON_DPAD_DOWN: row = (row + 1) % 4
 			JOY_BUTTON_START, JOY_BUTTON_A: _start_level(); return
-			JOY_BUTTON_B: _goto("menu"); queue_redraw(); return
+			JOY_BUTTON_B: _goto(levelsel_back); queue_redraw(); return
 		levelsel_idx = col * 4 + row
 		queue_redraw()
 		return
@@ -292,13 +327,16 @@ func _levelsel_input(event: InputEvent) -> void:
 		KEY_UP: row = (row + 3) % 4
 		KEY_DOWN: row = (row + 1) % 4
 		KEY_ENTER, KEY_KP_ENTER: _start_level(); return
-		KEY_ESCAPE: _goto("menu"); queue_redraw(); return
+		KEY_ESCAPE: _goto(levelsel_back); queue_redraw(); return
 	levelsel_idx = col * 4 + row
 	queue_redraw()
 
 
 func _start_level() -> void:
 	Main.debug_start_level = clampi(int(RECORD_LEVELS[levelsel_idx][1]), 1, Main.LEVEL_COUNT)
+	Main.skip_intro = true          # play the full level, no surface-intro/pipe cutscene
+	Main.level_select_mode = true   # on clear, return here (no advancing) — practice for times
+	Main.ls_back = levelsel_back
 	_start_game()
 
 
@@ -346,11 +384,11 @@ func _draw_file() -> void:
 		if nm == "":
 			nm = "-"
 		font.draw_text(self, Vector2(file_rect.position.x + 10.0, ry + 3.0), nm, 1.0, col)
-		# highest world reached on the RIGHT
+		# highest level reached on the RIGHT (canonical progress index, -1 = never played)
 		var hi: int = int(Main.save_highest[i])
 		var world := "NEW"
-		if hi > 0:
-			world = "WORLD " + String(Main.LEVEL_ORDER[clampi(hi, 1, Main.LEVEL_COUNT) - 1][1])
+		if hi >= 0:
+			world = "WORLD " + String(Main.CANON_LEVELS[clampi(hi, 0, Main.CANON_COUNT - 1)][0])
 		var wx: float = file_rect.position.x + file_rect.size.x - 10.0 - font.text_w(world, 1.0)
 		font.draw_text(self, Vector2(wx, ry + 3.0), world, 1.0, col)
 	font.draw_text(self, Vector2(0, file_rect.position.y + file_rect.size.y + 8.0),
@@ -378,6 +416,8 @@ func _draw_menu() -> void:
 func _draw_levelsel() -> void:
 	var w := float(VIEW_W)
 	font.draw_text(self, Vector2(0, 22), "LEVEL SELECT", 2.0, C_PURPLE, w)
+	if levelsel_back == "file":
+		font.draw_text(self, Vector2(0, 8), "DEBUG", 1.0, Color(0.4, 1.0, 0.4), w)
 	var best: Array = Main.save_best[Main.save_slot]
 	for i in RECORD_LEVELS.size():
 		var col := i / 4
@@ -388,8 +428,7 @@ func _draw_levelsel() -> void:
 		if seld:
 			_file_box(Rect2(x - 6.0, y - 12.0, 70.0, 20.0), C_PROMPT)
 		var label := String(RECORD_LEVELS[i][0])
-		var lvl := int(RECORD_LEVELS[i][1])
-		var t: float = float(best[lvl - 1]) if (lvl - 1) < best.size() else 0.0
+		var t: float = float(best[i]) if i < best.size() else 0.0
 		font.draw_text(self, Vector2(x, y), label, 1.0, (C_PROMPT if seld else C_WHITE))
 		font.draw_text(self, Vector2(x, y + 10.0), _fmt_time(t), 1.0, C_WHITE)
 	font.draw_text(self, Vector2(0, float(VIEW_H) - 12), "ENTER PLAY   ESC BACK", 1.0, C_WHITE, w)
@@ -408,8 +447,7 @@ func _draw_records() -> void:
 		var x := 20.0 + col * 78.0
 		var y := 70.0 + row * 22.0
 		var label := String(RECORD_LEVELS[i][0])
-		var lvl := int(RECORD_LEVELS[i][1])
-		var t: float = float(best[lvl - 1]) if (lvl - 1) < best.size() else 0.0
+		var t: float = float(best[i]) if i < best.size() else 0.0
 		font.draw_text(self, Vector2(x, y), label, 1.0, C_WHITE)
 		font.draw_text(self, Vector2(x, y + 10.0), _fmt_time(t), 1.0, C_PROMPT)
 	font.draw_text(self, Vector2(0, float(VIEW_H) - 12), "PRESS ANY KEY TO GO BACK", 1.0, C_WHITE, w)
@@ -439,11 +477,6 @@ func _draw_title() -> void:
 		font.draw_text(self, Vector2(0, 146), "R RESTART    M MUTE", 1.0, c, w)
 		font.draw_text(self, Vector2(0, 162), "GAMEPAD  A JUMP  X RUN  START PAUSE", 1.0,
 			Color(0.55, 0.8, 1.0, ctrl_a), w)
-
-	# DEBUG stage select (remove for release)
-	if ctrl_a > 0.0:
-		font.draw_text(self, Vector2(0, 178), "DEBUG  PRESS 1-8 FOR STAGE", 1.0,
-			Color(0.4, 1.0, 0.4, ctrl_a), w)
 
 	# blinking start prompt
 	if t > 2.0 and fmod(t, 0.8) < 0.5:

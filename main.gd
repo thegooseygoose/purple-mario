@@ -235,21 +235,55 @@ static var debug_start_level := 1   # DEBUG: level the intro's stage-select boot
 # --- SAVE FILES: 3 slots, each a name, the highest world reached, and a best time per level ---
 static var save_slot := 0                 # which of the 3 files is active this run
 static var save_names: Array = ["", "", ""]
-static var save_highest: Array = [0, 0, 0]   # highest level_num reached per slot (0 = brand new)
-static var save_best: Array = [[], [], []]   # per slot: LEVEL_COUNT best clear times (0 = none yet)
+static var save_highest: Array = [-1, -1, -1]  # furthest CANONICAL level reached (0..11), -1 = brand new
+static var save_best: Array = [[], [], []]   # per slot: 12 canonical best clear times (0 = none yet)
 static var save_beat: Array = [false, false, false]  # per slot: has this file beaten 3-4? (unlocks LEVEL SELECT)
 static var boot_to_files := false            # set when quitting to menu → intro opens at the file list
+static var attract_mode := false             # true = self-playing demo (idle on the file screen)
+static var skip_intro := false               # LEVEL SELECT: start directly in the level (no surface-intro/pipe cutscene)
+static var level_select_mode := false        # LEVEL SELECT run: on clear, return to the menu (don't advance)
+static var boot_to_levelsel := false         # tell the intro to reopen the LEVEL SELECT screen
+static var ls_back := "menu"                 # where LEVEL SELECT's ESC returns to ("menu" or "file")
+var _ls_return_t := 0.0
+const LS_RETURN_TIME := 3.0                   # seconds the clear card holds before returning to LEVEL SELECT
+var _attract_t := 0.0
+const ATTRACT_MAX := 40.0                     # seconds the demo runs before returning to the menu
 const SAVES_PATH := "user://saves.cfg"
+
+# The 12 levels players actually see, in order → their START play-slot (level_num).
+const CANON_LEVELS := [
+	["1-1", 1], ["1-2", 2], ["1-3", 3], ["1-4", 4],
+	["2-1", 7], ["2-2", 6], ["2-3", 13], ["2-4", 15],
+	["3-1", 8], ["3-2", 5], ["3-3", 16], ["3-4", 17],
+]
+# Every gameplay play-slot → which canonical level (0..11) it belongs to. The progression isn't
+# linear by slot (1-2 warps through EXTRA 1 = slot 9 before 1-3), so we track canonical progress,
+# not the raw slot number. Slots not listed (e.g. the SONIC demo, slot 10) aren't real progress.
+const SLOT_TO_PROGRESS := {
+	1: 0,                       # 1-1
+	2: 1, 9: 1, 11: 1,         # 1-2  (underground, EXTRA 1 exit, shortcut trap)
+	3: 2,                       # 1-3
+	4: 3,                       # 1-4
+	7: 4,                       # 2-1
+	6: 5, 14: 5,               # 2-2  (main + 2nd Sonic cutscene tail)
+	13: 6,                      # 2-3
+	15: 7,                      # 2-4  (Donkey Kong)
+	8: 8,                       # 3-1
+	5: 9,                       # 3-2
+	16: 10,                     # 3-3
+	17: 11,                     # 3-4
+}
+const CANON_COUNT := 12
 
 static func load_saves() -> void:
 	var cfg := ConfigFile.new()
 	var ok := cfg.load(SAVES_PATH) == OK
 	for i in 3:
 		save_names[i] = String(cfg.get_value("slot%d" % i, "name", "")) if ok else ""
-		save_highest[i] = int(cfg.get_value("slot%d" % i, "highest", 0)) if ok else 0
+		save_highest[i] = int(cfg.get_value("slot%d" % i, "highest", -1)) if ok else -1
 		save_beat[i] = bool(cfg.get_value("slot%d" % i, "beat", false)) if ok else false
 		var a: Array = []
-		for l in LEVEL_COUNT:
+		for l in CANON_COUNT:
 			a.append(float(cfg.get_value("slot%d" % i, "best%d" % l, 0.0)) if ok else 0.0)
 		save_best[i] = a
 
@@ -260,33 +294,43 @@ static func save_saves() -> void:
 		cfg.set_value("slot%d" % i, "highest", save_highest[i])
 		cfg.set_value("slot%d" % i, "beat", save_beat[i])
 		var a: Array = save_best[i]
-		for l in LEVEL_COUNT:
+		for l in CANON_COUNT:
 			cfg.set_value("slot%d" % i, "best%d" % l, (a[l] if l < a.size() else 0.0))
 	cfg.save(SAVES_PATH)
 
-# call as levels load — bumps the active slot's furthest-reached world and persists it
+# call as levels load — bumps the active slot's furthest CANONICAL level and persists it
 static func record_progress(lvl: int) -> void:
-	if save_slot >= 0 and save_slot < 3 and lvl > int(save_highest[save_slot]):
-		save_highest[save_slot] = lvl
+	if save_slot < 0 or save_slot >= 3:
+		return
+	var p: int = int(SLOT_TO_PROGRESS.get(lvl, -1))
+	if p >= 0 and p > int(save_highest[save_slot]):
+		save_highest[save_slot] = p
 		save_saves()
 
-# call on a level clear — store the finish time if it beats the slot's record for that
-# level. Returns true when a NEW best was set (first-ever time, or a quicker one).
+# call on a level clear — store the finish time against its CANONICAL level if it beats the
+# record. Returns true when a NEW best was set (first-ever time, or a quicker one).
 static func record_best_time(lvl: int, secs: float) -> bool:
 	if save_slot < 0 or save_slot >= 3:
 		return false
+	var ci: int = int(SLOT_TO_PROGRESS.get(lvl, -1))
+	if ci < 0:
+		return false
 	var a: Array = save_best[save_slot]
-	if a.size() < LEVEL_COUNT:
+	if ci >= a.size():
 		return false
-	var idx := lvl - 1
-	if idx < 0 or idx >= LEVEL_COUNT:
-		return false
-	var cur := float(a[idx])
+	var cur := float(a[ci])
 	if cur <= 0.0 or secs < cur:
-		a[idx] = secs
+		a[ci] = secs
 		save_saves()
 		return true
 	return false
+
+# the play-slot to boot into to resume at the file's furthest level
+static func resume_slot() -> int:
+	if save_slot < 0 or save_slot >= 3:
+		return 1
+	var hi: int = clampi(int(save_highest[save_slot]), 0, CANON_COUNT - 1)
+	return int(CANON_LEVELS[hi][1])
 var world_label := "1-1"        # shown in the HUD
 var underground := false         # true = black bg, no starfield (1-4 is underground)
 const SKY_COLOR := Color(0.16, 0.16, 0.19)   # night-sky clear colour for surface levels
@@ -479,8 +523,42 @@ const CREDITS_LINES := [
 	["THE END", 2.0, [1.0, 0.82, 0.30]],
 ]
 
+# the enemy cast shown in the credits: [texture key, display name]
+const CREDITS_CAST := [
+	["goomba1", "GOOMBA"],
+	["koopa1", "KOOPA"],
+	["pgoomba1", "FIRE GOOMBA"],
+	["pkoopa1", "PURPLE KOOPA"],
+	["hbror1", "HAMMER BRO"],
+	["pplant1", "PIRANHA"],
+	["gord0", "GORDO"],
+	["dk_idle0", "DONKEY KONG"],
+	["bowR0", "BOWSER"],
+	["sonic_wait_r0", "SONIC"],
+]
+const CREDITS_CAST_H := 42.0     # row height for an enemy portrait + name
+
+# The full credits roll as a list of items {kind, h, ...}. Text lines from CREDITS_LINES,
+# then an ENEMIES cast section (each enemy solo with its name), then THE END last.
+func _credits_items() -> Array:
+	var items: Array = []
+	for i in range(CREDITS_LINES.size() - 1):        # all but the final "THE END"
+		var e: Array = CREDITS_LINES[i]
+		items.append({"kind": "text", "text": e[0], "scale": e[1], "col": e[2], "h": CREDITS_LINE_H})
+	items.append({"kind": "text", "text": "ENEMIES", "scale": 1.0, "col": [0.8, 0.85, 1.0], "h": CREDITS_LINE_H})
+	items.append({"kind": "text", "text": "", "scale": 1.0, "col": [1, 1, 1], "h": CREDITS_LINE_H})
+	for c in CREDITS_CAST:
+		items.append({"kind": "cast", "key": c[0], "name": c[1], "h": CREDITS_CAST_H})
+	items.append({"kind": "text", "text": "", "scale": 1.0, "col": [1, 1, 1], "h": CREDITS_LINE_H})
+	var last: Array = CREDITS_LINES[CREDITS_LINES.size() - 1]
+	items.append({"kind": "text", "text": last[0], "scale": last[1], "col": last[2], "h": CREDITS_LINE_H * 1.5})
+	return items
+
 func _credits_scroll_max() -> float:
-	return CREDITS_START_Y + float(CREDITS_LINES.size() - 1) * CREDITS_LINE_H - CREDITS_REST_Y
+	var total := 0.0
+	for it in _credits_items():
+		total += float(it["h"])
+	return CREDITS_START_Y + total - CREDITS_REST_Y - CREDITS_LINE_H
 
 # REWARD TRAP (Level11): Mario drops OUT of the upside-down ceiling pipe (flipped-lip tiles)
 # then falls straight down into the lava below and dies — Sonic's "reward" is a death trap.
@@ -691,6 +769,11 @@ func _ready() -> void:
 	_want_12_intro = _file_at(level_num) in [4, 5, 12]              # play the surface intro if booting into 1-2
 	_want_emerge = _file_at(level_num) in [9, 14]               # rise out of the pipe if booting into EXTRA 1
 	_want_reward_trap = _file_at(level_num) == 11         # drop out of the ceiling pipe if booting into Level11
+	if skip_intro:                                         # LEVEL SELECT: drop straight into the playable level
+		_want_12_intro = false
+		_want_emerge = false
+		_want_reward_trap = false
+		skip_intro = false
 	reset(false)
 	_play_music(true)   # belt-and-suspenders; autoplay also starts it
 
@@ -707,6 +790,11 @@ func actors_frozen() -> bool:
 func _physics_process(delta: float) -> void:
 	if paused:
 		return
+	if attract_mode:
+		_attract_t += delta
+		if _attract_t >= ATTRACT_MAX:
+			_exit_attract()
+			return
 	qanim_phase += delta          # ? / mushroom blocks always pulse (SMB1 FrameCounter), even mid-freeze
 	if _level_file == 14:
 		_update_l14_audio()
@@ -714,6 +802,15 @@ func _physics_process(delta: float) -> void:
 		if not _recorded_clear:
 			_new_record = record_best_time(level_num, elapsed)   # save-file: log time; true = new best
 			_recorded_clear = true
+		# LEVEL SELECT run: hold the clear card a moment (time + NEW RECORD), then back to the menu —
+		# no advancing to the next level; the point is just to beat your time.
+		if level_select_mode:
+			_update_flag_slide(delta)
+			_ls_return_t += delta
+			if _ls_return_t >= LS_RETURN_TIME:
+				_return_to_levelsel()
+			hud.refresh()
+			return
 		# 3-4 finale: after COURSE CLEAR, hold, fade to black, then roll the end credits
 		if _boss_finale:
 			_update_finale(delta)
@@ -1086,6 +1183,7 @@ func reset(preserve_progress := true) -> void:
 	record_progress(level_num)          # save-file: remember the furthest world reached
 	_recorded_clear = false             # arm best-time recording for this level
 	_new_record = false
+	_ls_return_t = 0.0
 	# 1-2 Sonic cutscene: re-arm and locate the trigger pipe (file 4 only)
 	sonic_cut = false
 	sonic_speech = false
@@ -4613,6 +4711,11 @@ func _bake_frame(sheet: Image, r: Rect2i) -> ImageTexture:
 	return ImageTexture.create_from_image(canvas)
 
 func _unhandled_input(event: InputEvent) -> void:
+	# attract/demo mode: any real button press drops back to the menu
+	if attract_mode:
+		if (event is InputEventKey or event is InputEventJoypadButton) and event.pressed and not event.is_echo():
+			_exit_attract()
+		return
 	if event.is_action_pressed("pause"):
 		toggle_pause()
 		return
@@ -4631,33 +4734,6 @@ func _unhandled_input(event: InputEvent) -> void:
 		reset(true)
 	if event.is_action_pressed("mute"):
 		toggle_mute()
-	# DEBUG stage warp: 1-9 = that slot, 0 = 10, - = 11, = = 12, Backspace = 13, \ = 14, ] = 15, [ = 16, ' = 17 (remove for release)
-	if event is InputEventKey and ((event.keycode >= KEY_1 and event.keycode <= KEY_9) or event.keycode == KEY_0 or event.keycode == KEY_MINUS or event.keycode == KEY_EQUAL or event.keycode == KEY_BACKSPACE or event.keycode == KEY_BACKSLASH or event.keycode == KEY_BRACKETRIGHT or event.keycode == KEY_BRACKETLEFT or event.keycode == KEY_APOSTROPHE):
-		if event.keycode == KEY_APOSTROPHE:
-			level_num = 17
-		elif event.keycode == KEY_BRACKETLEFT:
-			level_num = 16
-		elif event.keycode == KEY_BRACKETRIGHT:
-			level_num = 15
-		elif event.keycode == KEY_BACKSLASH:
-			level_num = 14
-		elif event.keycode == KEY_BACKSPACE:
-			level_num = 13
-		elif event.keycode == KEY_EQUAL:
-			level_num = 12
-		elif event.keycode == KEY_MINUS:
-			level_num = 11
-		elif event.keycode == KEY_0:
-			level_num = 10
-		else:
-			level_num = event.keycode - KEY_1 + 1
-		level_num = clampi(level_num, 1, LEVEL_COUNT)
-		advancing = false
-		show_level_card = false
-		_want_12_intro = _file_at(level_num) in [4, 5, 12]   # surface intro when warping to 1-2
-		_want_emerge = _file_at(level_num) in [9, 14]     # pipe emerge when warping to EXTRA 1
-		_want_reward_trap = _file_at(level_num) == 11  # ceiling-pipe drop when warping to Level11
-		reset(false)
 
 const UNPAUSE_BUFFER_MS := 200    # brief debounce so one keypress can't double-toggle
 var _paused_at := 0
@@ -4706,6 +4782,17 @@ func _quit_to_menu() -> void:
 	paused = false
 	save_saves()                              # make sure progress/records are on disk
 	boot_to_files = true                      # tell the intro to open straight at the file list
+	get_tree().change_scene_to_file("res://Intro.tscn")
+
+func _exit_attract() -> void:
+	attract_mode = false
+	boot_to_files = true                      # return to the file screen
+	get_tree().change_scene_to_file("res://Intro.tscn")
+
+func _return_to_levelsel() -> void:
+	level_select_mode = false
+	boot_to_levelsel = true
+	save_saves()
 	get_tree().change_scene_to_file("res://Intro.tscn")
 
 # Left/Right on the selected row: volume for the two audio rows, filter cycle for the third.
