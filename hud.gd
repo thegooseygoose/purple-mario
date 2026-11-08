@@ -43,6 +43,9 @@ func _paint(ci: CanvasItem) -> void:
 	if main.game_state == "credits":
 		_paint_credits(ci)
 		return
+	if main.game_state == "shareware":
+		_paint_shareware(ci)
+		return
 	# between-level black card: full black, ONLY the next-level name centred
 	if main.show_level_card:
 		ci.draw_rect(Rect2(0, 0, w, float(main.VIEW_H)), Color.BLACK)
@@ -231,6 +234,29 @@ func _paint_filter_row(ci: CanvasItem, by: float, selected: bool) -> void:
 		Vector2(vx + vw, midy), Vector2(vx + vw - 5, midy - 4), Vector2(vx + vw - 5, midy + 4)]), col)
 	# filter name centred between the arrows
 	font.draw_text(ci, Vector2(vx + 8, by), fname, 1.0, col, vw - 16.0)
+
+
+# ---- SHAREWARE END SCREEN (shareware build only, after 1-4) ----
+func _paint_shareware(ci: CanvasItem) -> void:
+	var w := float(main.VIEW_W)
+	ci.draw_rect(Rect2(0, 0, w, float(main.VIEW_H)), Color.BLACK)
+	var P := Color(0.75, 0.45, 1.0)
+	var Y := Color(1.0, 0.85, 0.2)
+	var W := Color.WHITE
+	var lines := [
+		[34, "THANK YOU FOR PLAYING", 1.0, W],
+		[58, "PURPLE MARIO", 2.0, P],
+		[74, "SHAREWARE VERSION", 1.0, Y],
+		[102, "YOU BEAT WORLD 1!", 1.0, W],
+		[122, "THE ADVENTURE CONTINUES IN", 1.0, W],
+		[134, "WORLD 2 AND WORLD 3", 1.0, W],
+		[146, "IN THE FULL GAME", 1.0, W],
+		[174, "BUY THE FULL GAME TODAY!", 1.0, Y],
+	]
+	for l in lines:
+		font.draw_text(ci, Vector2(0, float(l[0])), String(l[1]), float(l[2]), l[3], w)
+	if main._sw_t > 2.0 and fmod(main.qanim_phase, 0.8) < 0.5:
+		font.draw_text(ci, Vector2(0, 214), "PRESS START", 1.0, W, w)
 
 
 # ---- 3-4 END CREDITS ----

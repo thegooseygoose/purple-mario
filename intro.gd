@@ -126,7 +126,7 @@ func _process(delta: float) -> void:
 			else:
 				img_alpha = 0.0
 				music.stop()
-				if con_img != null:
+				if con_img != null and not Main.is_shareware():
 					_goto("con")
 				else:
 					_open_files()      # no controls image → straight to the file list
@@ -156,6 +156,13 @@ func _goto(p: String) -> void:
 
 
 func _input(event: InputEvent) -> void:
+	# SHAREWARE notice: any key / Start / A (after a moment) starts World 1-1
+	if phase == "sw":
+		if t > 1.0 and event.pressed and not event.is_echo() and (event is InputEventKey or event is InputEventJoypadButton):
+			Main.save_slot = -1             # shareware keeps no save files
+			Main.debug_start_level = 1
+			_start_game()
+		return
 	if phase == "file":
 		_file_input(event)
 		return
@@ -181,6 +188,11 @@ func _input(event: InputEvent) -> void:
 
 
 func _open_files() -> void:
+	if Main.is_shareware():              # shareware: logo -> shareware notice -> 1-1 (no files/menus)
+		if music:
+			music.stop()
+		_goto("sw")
+		return
 	Main.load_saves()
 	file_sel = 0
 	file_idle = 0.0
@@ -210,7 +222,7 @@ func _file_input(event: InputEvent) -> void:
 		return
 	var kc: int = event.keycode
 	# hidden debug cheat: press N five times in a row → LEVEL SELECT (all 12 levels)
-	if kc == KEY_N:
+	if kc == KEY_N and not Main.is_shareware():
 		_n_count += 1
 		if _n_count >= 5:
 			_n_count = 0
@@ -360,6 +372,8 @@ func _draw() -> void:
 		_draw_records()
 	elif phase == "levelsel":
 		_draw_levelsel()
+	elif phase == "sw":
+		_draw_shareware()
 	elif phase == "con" and con_img != null:
 		draw_texture_rect(con_img, con_rect, false, Color(1, 1, 1, con_alpha))
 	else:
@@ -460,6 +474,24 @@ func _fmt_time(t: float) -> String:
 	if m > 0:
 		return "%d:%05.2f" % [m, t - m * 60]
 	return "%.2f" % t
+
+
+func _draw_shareware() -> void:
+	var w := float(VIEW_W)
+	var a := clampf(t / 0.6, 0.0, 1.0)
+	var Y := Color(C_PROMPT, a)
+	var W := Color(C_WHITE, a)
+	draw_rect(Rect2(8, 8, w - 16, VIEW_H - 16), Color(C_PURPLE, a), false, 1.0)
+	font.draw_text(self, Vector2(0, 40), "PURPLE MARIO", 2.0, Color(C_PURPLE, a), w)
+	font.draw_text(self, Vector2(0, 58), "SHAREWARE VERSION", 1.0, Y, w)
+	font.draw_text(self, Vector2(0, 86), "THIS VERSION INCLUDES WORLD 1", 1.0, W, w)
+	font.draw_text(self, Vector2(0, 98), "LEVELS 1-1 TO 1-4", 1.0, W, w)
+	font.draw_text(self, Vector2(0, 120), "WORLD 2 AND WORLD 3 ARE IN", 1.0, W, w)
+	font.draw_text(self, Vector2(0, 132), "THE FULL GAME", 1.0, W, w)
+	font.draw_text(self, Vector2(0, 154), "PLEASE SHARE THIS COPY", 1.0, W, w)
+	font.draw_text(self, Vector2(0, 166), "WITH YOUR FRIENDS!", 1.0, W, w)
+	if t > 1.0 and fmod(t, 0.8) < 0.5:
+		font.draw_text(self, Vector2(0, 204), "PRESS START", 1.0, C_PROMPT, w)
 
 
 func _draw_title() -> void:
