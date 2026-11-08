@@ -231,23 +231,6 @@ var saved_tier := "small"       # power tier Mario STARTS the next level as (car
 var level_num := 1              # 1 = world 1-1, 2 = world 1-2
 const LEVEL_COUNT := 17         # number of levels in LEVEL_ORDER (debug stage select; 10=key 0, 11=key -, 12=key =, 13=key Backspace, 14=key \, 15=key ], 16=key [, 17=key ')
 static var debug_start_level := 1   # DEBUG: level the intro's stage-select boots into
-# SHAREWARE build (export feature tag "shareware", used by BlinkChat): World 1 only.
-# Beating 1-4 (or reaching any level outside World 1) shows the order-the-full-game screen.
-static func is_shareware() -> bool:
-	return OS.has_feature("shareware")
-var _sw_t := 0.0
-static func _sw_allowed(slot: int) -> bool:
-	return String(LEVEL_ORDER[clampi(slot, 1, LEVEL_COUNT) - 1][1]).begins_with("1-")
-func _start_shareware_end() -> void:
-	game_state = "shareware"
-	advancing = false
-	show_level_card = false
-	_sw_t = 0.0
-	music_player.stop()
-	if OS.has_feature("web"):
-		JavaScriptBridge.eval("try{window.parent.postMessage({mario:'shareware_end'},'*')}catch(e){}")
-	hud.refresh()
-
 
 # --- SAVE FILES: 3 slots, each a name, the highest world reached, and a best time per level ---
 static var save_slot := 0                 # which of the 3 files is active this run
@@ -792,9 +775,6 @@ func _ready() -> void:
 		_want_reward_trap = false
 		skip_intro = false
 	reset(false)
-	if is_shareware() and not _sw_allowed(level_num):
-		_start_shareware_end()
-		return
 	_play_music(true)   # belt-and-suspenders; autoplay also starts it
 
 
@@ -816,10 +796,6 @@ func _physics_process(delta: float) -> void:
 			_exit_attract()
 			return
 	qanim_phase += delta          # ? / mushroom blocks always pulse (SMB1 FrameCounter), even mid-freeze
-	if game_state == "shareware":
-		_sw_t += delta
-		hud.refresh()
-		return
 	if _level_file == 14:
 		_update_l14_audio()
 	if game_state == "clear":
@@ -2274,9 +2250,6 @@ func _update_advance(delta: float) -> void:
 		# hold 40 frames after the jingle
 		advance_frames += 1
 		if advance_frames >= 40:
-			if is_shareware() and not _sw_allowed(_advance_next):
-				_start_shareware_end()
-				return
 			advance_phase = 2
 			advance_ct = 0.0
 			# black card shows the NEXT level's label from the lineup (honouring the override)
@@ -4748,10 +4721,6 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	if paused:
 		_pause_menu_input(event)
-		return
-	if game_state == "shareware":
-		if _sw_t > 2.0 and (event is InputEventKey or event is InputEventJoypadButton) and event.pressed and not event.is_echo():
-			_quit_to_menu()
 		return
 	# end credits: once "THE END" has settled, any button press restarts the whole game
 	if game_state == "credits":
